@@ -1,0 +1,69 @@
+{
+  "lockVersion": 1,
+  "defaults": {
+    "sub2apiVersion": "0.1.183"
+  },
+  "platforms": {
+    "darwin-arm64": { "matrixBatch": 1 },
+    "darwin-amd64": { "matrixBatch": 2 },
+    "linux-arm64": { "matrixBatch": 3 },
+    "linux-amd64": { "matrixBatch": 3 },
+    "windows-amd64": { "matrixBatch": 2, "note": "sub2api ships a .zip for windows; add its variant when the second-batch matrix lands" }
+  },
+  "sources": {
+    "sub2api": {
+      "component": "Sub2API",
+      "upstream": "https://github.com/Wei-Shaw/sub2api",
+      "releaseChannel": "goreleaser GitHub Release assets",
+      "urlTemplate": "https://github.com/Wei-Shaw/sub2api/releases/download/v{version}/sub2api_{version}_{os}_{arch}.tar.gz",
+      "checksumsUrlTemplate": "https://github.com/Wei-Shaw/sub2api/releases/download/v{version}/checksums.txt",
+      "defaultVersion": "0.1.183",
+      "packagedPath": "bin/sub2api",
+      "hashSource": "official goreleaser checksums.txt shipped with the pinned release",
+      "variants": {
+        "darwin-arm64": { "sha256": "e02d6f0fb0ae8dc00c141bd13239c56a1fef5c39facbc66cd6a7d81618418012" },
+        "darwin-amd64": { "sha256": "da52564ae91074339a0349fc62cb23351972eb3adc15c04ebcef58e9053b67bd" },
+        "linux-amd64": { "sha256": "5833afd244d2313109fbdbbabfbf2076a883ab544563b9bdc66b4c09636535be" },
+        "linux-arm64": { "sha256": "f338b8e6081b9c0ed3616fdb8473486b0faa1f6b756ad0aa4213bafb9cc798fa8" }
+      }
+    },
+    "postgresql": {
+      "component": "PostgreSQL",
+      "upstream": "https://github.com/zonky/embedded-postgres-binaries",
+      "releaseChannel": "Maven Central artifacts published by zonky/embedded-postgres-binaries",
+      "urlTemplate": "https://repo1.maven.org/maven2/io/zonky/test/postgres/embedded-postgres-binaries-darwin-{mavenArch}/{version}/embedded-postgres-binaries-darwin-{mavenArch}-{version}.jar",
+      "version": "17.10.0",
+      "pgMajor": 17,
+      "container": "jar (zip) wrapping a tar.xz of the PostgreSQL distribution",
+      "packagedPaths": ["bin/", "lib/", "share/"],
+      "hashSource": "official repo1.maven.org .sha256 sidecar of the pinned artifact",
+      "selectionReason": "zonky/embedded-postgres-binaries is a maintained project that repackages official PostgreSQL releases into per-OS/arch artifacts on Maven Central with checksum sidecars; it is the only tracked distribution covering both darwin arm64 and amd64 for PG 16/17 without a GUI app or package-manager linkage.",
+      "variants": {
+        "darwin-arm64": { "mavenArch": "arm64v8", "sha256": "b8c73288326af937b632208110b1d629c404ebef7519f8bcc7fd72404c68a36a" },
+        "darwin-amd64": { "mavenArch": "amd64", "sha256": "667a0eea70157656649417777af452148f6c79ae3654b2cd057a37fd701bd9e9" }
+      },
+      "rejections": {
+        "Postgres.app": "GUI app bundle; upstream documents the binaries as not intended for standalone redistribution.",
+        "Homebrew bottles": "linked against /opt/homebrew prefix paths and transitive dependencies; not portable.",
+        "EDB installers": "interactive installer format, not a portable tarball."
+      }
+    },
+    "redis": {
+      "component": "Redis",
+      "status": "todo-unresolved-darwin",
+      "version": null,
+      "urlTemplate": null,
+      "variants": {},
+      "placeholder": {
+        "packagedPath": "bin/redis-server",
+        "behavior": "executable stub that prints a loud startup error naming this lock entry and exits non-zero; real binary replaces it once a source resolves",
+        "reason": "Redis Ltd publishes no official darwin binaries; valkey GitHub releases carry no binary assets (source tarballs only); Homebrew bottles are linked to /opt/homebrew and drag transitive deps (openssl@3), so they are not portable; known community builds are stale forks or docker-only images. Re-evaluate when Redis ships official darwin binaries or a maintained, checksummed static darwin build appears."
+      },
+      "rejections": {
+        "Homebrew bottles (ghcr.io/homebrew/core/redis)": "non-portable: dylibs resolved under /opt/homebrew plus transitive dependencies; bundling them means hand-rolling a mini package manager.",
+        "valkey-io/valkey GitHub releases": "no binary assets published (verified on 2026-08-27 for 9.1.1: source tarballs only).",
+        "community GitHub builds (e.g. zero-team-pro/redis)": "docker images or stale one-off forks; no maintained checksummed darwin artifact."
+      }
+    }
+  }
+}

@@ -1,0 +1,69 @@
+name: Runtime Pack
+
+# Builds the portable Sub2API runtime pack and uploads dist/ as a workflow
+# artifact. Creating GitHub Releases, tags, or Release assets is a release
+# mutation that requires separate user approval; this workflow deliberately
+# stops at the artifact.
+
+on:
+  workflow_dispatch:
+    inputs:
+      sub2api-version:
+        description: "Sub2API version override (defaults to the pin in pack-sources.lock.json)"
+        required: false
+        type: string
+  push:
+    branches: [main]
+    paths:
+      - "scripts/build-runtime-pack.mjs"
+      - "pack-sources.lock.json"
+      - ".github/workflows/runtime-pack.yml"
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    name: runtime-pack ${{ matrix.os }}-${{ matrix.arch }}
+    runs-on: ${{ matrix.runs-on }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: darwin
+            arch: arm64
+            runs-on: macos-latest
+        # Second batch of ticket sidecar#3: uncomment as sources land in
+        # pack-sources.lock.json.
+        # - os: darwin
+        #   arch: amd64
+        #   runs-on: macos-latest
+        # - os: windows
+        #   arch: amd64
+        #   runs-on: windows-latest
+    env:
+      SUB2API_VERSION: ${{ inputs.sub2api-version }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - name: Build runtime pack
+        run: >
+          node scripts/build-runtime-pack.mjs
+          --os ${{ matrix.os }}
+          --arch ${{ matrix.arch }}
+          ${SUB2API_VERSION:+--sub2api-version "$SUB2API_VERSION"}
+      - name: Verify pack checksums
+        working-directory: dist
+        run: |
+          tar -xzf runtime-pack-*.tar.gz
+          cd runtime-pack-*/
+          shasum -a 256 -c SHA256SUMS
+      - name: Upload pack artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: runtime-pack-${{ matrix.os }}-${{ matrix.arch }}
+          path: dist/
+          if-no-files-found: error
+          retention-days: 14
