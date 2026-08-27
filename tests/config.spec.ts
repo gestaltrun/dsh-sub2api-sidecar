@@ -23,6 +23,10 @@ describe('config schema', () => {
     expect(resolved.group.name).toBe('dsh-composite')
     expect(resolved.redis.skip).toBe(false)
     expect(resolved.adminPassword).toBeUndefined()
+    expect(resolved.proxy.enabled).toBe(true)
+    expect(resolved.proxy.allowedOrigins).toEqual([])
+    expect(resolved.proxy.timeoutMs).toBe(30_000)
+    expect(resolved.quotaPollMs).toBe(60_000)
   })
 
   it('rejects unknown-shape values with named paths', () => {
@@ -41,6 +45,17 @@ describe('config schema', () => {
     expect(result.issues?.[0]?.path).toEqual(['credentials', 'adminRef'])
   })
 
+  it('rejects proxy shapes that are not booleans, origin arrays, or integer budgets', () => {
+    const enabled = Config['~standard'].validate({ proxy: { enabled: 'yes' } })
+    expect(enabled.issues?.[0]?.path).toEqual(['proxy', 'enabled'])
+    const origins = Config['~standard'].validate({ proxy: { allowedOrigins: 'https://x.example' } })
+    expect(origins.issues?.[0]?.path).toEqual(['proxy', 'allowedOrigins'])
+    const timeout = Config['~standard'].validate({ proxy: { timeoutMs: 0 } })
+    expect(timeout.issues?.[0]?.path).toEqual(['proxy', 'timeoutMs'])
+    const poll = Config['~standard'].validate({ quotaPollMs: 1.5 })
+    expect(poll.issues?.[0]?.path).toEqual(['quotaPollMs'])
+  })
+
   it('rejects an empty model list and an unsupported wire protocol', () => {
     const emptyModels = Config['~standard'].validate({ route: { models: [] } })
     expect(emptyModels.issues?.[0]?.path[0]).toBe('route')
@@ -57,6 +72,22 @@ describe('resolveConfig', () => {
   it('rejects an inverted port range', () => {
     expect(() => resolveConfig({ portRange: { min: 500, max: 400 } }, { DSH_HOME: '/tmp/home' }))
       .toThrow(/portRange/)
+  })
+
+  it('rejects an allowed origin that is not a bare http(s) origin', () => {
+    expect(() => resolveConfig({ proxy: { allowedOrigins: ['file:///etc'] } }, { DSH_HOME: '/tmp/home' }))
+      .toThrow(/allowedOrigins/)
+    expect(() => resolveConfig({ proxy: { allowedOrigins: ['https://desktop.example/path'] } }, { DSH_HOME: '/tmp/home' }))
+      .toThrow(/bare http\(s\) origin/)
+  })
+
+  it('normalizes and resolves the proxy group and poll interval', () => {
+    const resolved = resolveConfig({
+      proxy: { enabled: false, allowedOrigins: ['https://desktop.example/'], timeoutMs: 5_000 },
+      quotaPollMs: 1_000,
+    }, { DSH_HOME: '/tmp/home' })
+    expect(resolved.proxy).toEqual({ enabled: false, allowedOrigins: ['https://desktop.example'], timeoutMs: 5_000 })
+    expect(resolved.quotaPollMs).toBe(1_000)
   })
 
   it('honors every override it accepts', () => {
