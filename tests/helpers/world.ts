@@ -14,6 +14,7 @@ import { fileURLToPath } from 'node:url'
 import { resolveConfig } from '../../src/config.ts'
 import type { SidecarConfig } from '../../src/config.ts'
 import type { CredentialsService, LoggerLike, SettingsService, SubprocessService } from '../../src/seam.ts'
+import { FakeWebServer } from './fake-webserver.ts'
 import { makeSubprocessService } from './subprocess-local.ts'
 
 const helpersDir = path.dirname(fileURLToPath(import.meta.url))
@@ -75,6 +76,8 @@ export interface World {
   readonly credentials: FakeCredentials
   readonly settings: FakeSettings
   readonly logger: FakeLogger
+  /** Listening web server seam double the plugin registers routes on. */
+  readonly webServer: FakeWebServer
   /** Plugin-context effect registry: returns the registered disposers. */
   readonly effects: Array<() => () => unknown>
   /** Register an effect the way the cordis context would. */
@@ -223,6 +226,8 @@ exit 78
   const credentials = new FakeCredentials()
   const settings = new FakeSettings()
   const logger = new FakeLogger()
+  const webServer = new FakeWebServer()
+  await webServer.listen()
   const effects: Array<() => () => unknown> = []
 
   return {
@@ -234,12 +239,14 @@ exit 78
     credentials,
     settings,
     logger,
+    webServer,
     effects,
     effect(execute: () => () => unknown): () => unknown {
       effects.push(execute)
       return execute
     },
     async dispose(): Promise<void> {
+      await webServer.close()
       await fs.rm(root, { recursive: true, force: true })
     },
   }
