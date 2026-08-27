@@ -182,7 +182,7 @@ lets the injection plane carry its authentication:
 - The embedded-session endpoints `GET /api/v1/auth/me` and `POST
   /api/v1/auth/{login,refresh,logout}` arriving under the prefix are answered
   by the passthrough itself with a fabricated display-only admin identity
-  (`run_mode: "simple"`) and never reach the sidecar: this is what keeps the
+  (`run_mode: "standard"`, so upstream's full management surface — including the composite-groups UI it gates on this field client-side — stays reachable; the supervised gateway process itself stays `RUN_MODE=simple`) and never reach the sidecar: this is what keeps the
   embedded console off the login page. Upstream upgrade response: if the
   storage keys or these endpoints change upstream, update `src/ui-shim.ts`
   and the stub table in `src/ui-proxy.ts` — both are host-side, so no

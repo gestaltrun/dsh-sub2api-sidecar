@@ -14,7 +14,7 @@
  */
 
 import fs from 'node:fs/promises'
-import { Sub2apiClient } from './client.ts'
+import { Sub2apiClient } from './sub2api-client.ts'
 import { DEFAULT_EXTERNAL_REDIS } from './config.ts'
 import type { SidecarConfig } from './config.ts'
 import { ensureAdminPassword } from './admin-password.ts'

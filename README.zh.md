@@ -155,7 +155,7 @@ origin 下，注入面才覆盖得到它的鉴权：
   这是 `<base href>` 做不到的。shim 不含任何 key 明文，也不授予任何上游
   鉴权；admin 数据全部经由注入 key 流转。
 - 到达前缀的 `GET /api/v1/auth/me` 与 `POST /api/v1/auth/{login,refresh,logout}`
-  由透传面直接以伪造的仅展示用管理员身份应答（`run_mode: "simple"`），
+  由透传面直接以伪造的仅展示用管理员身份应答（`run_mode: "standard"`，让上游完整的管理面——包括它仅在前端按此字段设防的 composite 分组 UI——保持可达；受监督的网关进程本身仍是 `RUN_MODE=simple`），
   绝不下发 sidecar——嵌入控制台因此永远到不了登录页。上游升级应对：若上游
   更改存储键或这些端点，更新 `src/ui-shim.ts` 与 `src/ui-proxy.ts` 的桩表
   即可，两者都在宿主侧，永远不需要 fork 前端。已知边界：非 admin（面板）

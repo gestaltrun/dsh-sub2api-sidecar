@@ -23,6 +23,9 @@ export interface Sub2apiSectionProps {
 /** Host-relative URL the embedded console is served under. */
 export const EMBED_SRC = '/plugins/dsh-sub2api/ui/'
 
+/** The console's inner route the embed lands on: the account pool view. */
+export const EMBED_ROUTE = 'admin/accounts'
+
 /** Host-relative readiness surface the container polls (the quota snapshot). */
 export const SNAPSHOT_URL = '/plugins/dsh-sub2api/quota-snapshot'
 
@@ -118,7 +121,7 @@ export function Sub2apiSection({ t }: Sub2apiSectionProps) {
   if (readiness.phase === 'ready') {
     return (
       <div className={css.container}>
-        <iframe className={css.frame} src={EMBED_SRC} title={t('nav')} />
+        <iframe className={css.frame} src={`${EMBED_SRC}${EMBED_ROUTE}`} title={t('nav')} />
       </div>
     )
   }

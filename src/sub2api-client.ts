@@ -10,7 +10,7 @@
  * carry only the upstream code and message — key material is never included in
  * an error path.
  *
- * @module dsh-sub2api-sidecar/client
+ * @module dsh-sub2api-sidecar/sub2api-client
  */
 
 /** Authenticated caller for admin and panel requests. */

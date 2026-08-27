@@ -12,7 +12,7 @@ import { act } from 'react'
 import { createRoot } from 'react-dom/client'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { apply, inject } from '../src/client/index.ts'
-import { describeReason, EMBED_SRC, readReadiness, Sub2apiSection } from '../src/client/Sub2apiSection.tsx'
+import { describeReason, EMBED_ROUTE, EMBED_SRC, readReadiness, Sub2apiSection } from '../src/client/Sub2apiSection.tsx'
 import { en, zh, type SectionKeys } from '../src/client/locales.ts'
 import type { ClientContext } from '@deepseek-ai/dsh-client-runtime/client'
 
@@ -163,7 +163,7 @@ describe('section component', () => {
     const view = await renderSection()
     try {
       const frame = view.container.querySelector('iframe')
-      expect(frame?.getAttribute('src')).toBe(EMBED_SRC)
+      expect(frame?.getAttribute('src')).toBe(EMBED_SRC + EMBED_ROUTE)
       expect(frame?.getAttribute('title')).toBe('订阅账号池')
       expect(view.container.querySelector('a')).toBeNull()
     } finally {

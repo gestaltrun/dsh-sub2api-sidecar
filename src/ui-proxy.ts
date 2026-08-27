@@ -39,6 +39,13 @@ export const UI_PROXY_PREFIX = '/plugins/dsh-sub2api/ui'
 /** The prefix with a trailing slash: the console's base path under the host. */
 export const UI_BASE_PATH = `${UI_PROXY_PREFIX}/`
 
+/**
+ * Reserved path the passthrough answers itself with the runtime shim script.
+ * The shim must be an external same-origin script because upstream's CSP
+ * allows scripts from 'self' and nonced inline tags only.
+ */
+export const UI_SHIM_PATH = '/plugins/dsh-sub2api/ui/dsh-embed-shim.js'
+
 /** The upstream sidecar root path the bare prefix lands on. */
 const UPSTREAM_ROOT = '/'
 
@@ -85,7 +92,13 @@ const AUTH_STUBS = new Map<string, AuthStub>([
   ['POST /api/v1/auth/logout', { envelope: { code: 0, message: 'success', data: null } }],
 ])
 
-/** The display-only embedded admin identity (upstream `User` subset plus simple run mode). */
+/**
+ * The display-only embedded admin identity (upstream `User` subset plus the
+ * standard run mode). `run_mode: "standard"` keeps the console's full
+ * management surface reachable — upstream gates the composite-groups UI on
+ * it client-side only, and the admin plane itself is run-mode agnostic; the
+ * supervised gateway process stays `RUN_MODE=simple`.
+ */
 function embeddedUser(): Record<string, unknown> {
   return {
     id: 0,
@@ -106,7 +119,7 @@ function embeddedUser(): Record<string, unknown> {
 
 /** The `/auth/me` answer: the identity plus the run mode upstream echoes. */
 function meEnvelope(): unknown {
-  return { code: 0, message: 'success', data: { ...embeddedUser(), run_mode: 'simple' } }
+  return { code: 0, message: 'success', data: { ...embeddedUser(), run_mode: 'standard' } }
 }
 
 /** The login/refresh answer: a placeholder session over the same identity. */
@@ -119,7 +132,7 @@ function sessionEnvelope(): unknown {
       refresh_token: 'dsh-embedded-session',
       token_type: 'Bearer',
       expires_in: 400 * 24 * 60 * 60,
-      user: { ...embeddedUser(), run_mode: 'simple' },
+      user: { ...embeddedUser(), run_mode: 'standard' },
     },
   }
 }
@@ -184,6 +197,17 @@ async function handle(
     adminPlane = mapped.adminPlane
   } catch {
     answerJson(res, 404, 'UI_NOT_FOUND', 'request path is not under the console passthrough prefix')
+    return
+  }
+
+  // Reserved shim asset, answered here so it stays same-origin ('self' for
+  // upstream's script-src) and so the upstream SPA fallback never shadows it.
+  if (new URL(`http://x${req.url ?? '/'}`).pathname === UI_SHIM_PATH) {
+    res.writeHead(200, {
+      'content-type': 'application/javascript; charset=utf-8',
+      'cache-control': 'no-cache',
+    })
+    res.end(UI_EMBED_SHIM)
     return
   }
 
@@ -267,8 +291,19 @@ async function answerHtml(
   // The upstream ETag brands the untransformed document, so it must not
   // brand the transformed one; upstream serves index.html no-cache.
   delete headers['etag']
+  // frame-ancestors 'none' (and X-Frame-Options) forbid every framer; the
+  // desktop embed is this surface's purpose, and its admission posture is
+  // enforced by the route itself, so the anti-framing directives are dropped
+  // on the transformed document.
+  if (headers['content-security-policy'] !== undefined) {
+    headers['content-security-policy'] = headers['content-security-policy']
+      .replace(/frame-ancestors[^;]*;?/gi, '')
+      .replace(/;\s*$/, '')
+      .trim()
+  }
+  delete headers['x-frame-options']
   res.writeHead(upstream.status, headers)
-  res.end(transformUiHtml(html, UI_BASE_PATH, `<script>${UI_EMBED_SHIM}</script>`))
+  res.end(transformUiHtml(html, UI_BASE_PATH, `<script src="${UI_SHIM_PATH}"></script>`))
   logger.info('dsh-sub2api-sidecar: ui %s -> %d (transformed html)', method ?? '?', upstream.status)
 }
 

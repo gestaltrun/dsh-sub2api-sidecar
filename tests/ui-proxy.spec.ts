@@ -15,7 +15,7 @@ import { createServer } from 'node:http'
 import type { Server } from 'node:http'
 import type { AddressInfo } from 'node:net'
 import { resolveConfig } from '../src/config.ts'
-import { UI_BASE_PATH, UI_PROXY_PREFIX, mapUiPath, registerUiProxy } from '../src/ui-proxy.ts'
+import { UI_BASE_PATH, UI_PROXY_PREFIX, UI_SHIM_PATH, mapUiPath, registerUiProxy } from '../src/ui-proxy.ts'
 import { UI_EMBED_SHIM } from '../src/ui-shim.ts'
 import { FakeCredentials, FakeLogger } from './helpers/world.ts'
 import { FakeWebServer } from './helpers/fake-webserver.ts'
@@ -88,7 +88,12 @@ async function startFakeSidecar(): Promise<FakeSidecar> {
         }
         if (pathname === '/' || pathname.startsWith('/admin') === true && !pathname.startsWith('/assets')) {
           // `/` and every unknown non-asset path fall back to the SPA shell.
-          res.writeHead(200, { 'content-type': 'text/html; charset=utf-8', etag: 'W/"fake-index"' })
+          res.writeHead(200, {
+            'content-type': 'text/html; charset=utf-8',
+            etag: 'W/"fake-index"',
+            'content-security-policy':
+              "default-src 'self'; script-src 'self' 'nonce-fake=='; frame-ancestors 'none'; base-uri 'self'",
+          })
           res.end(INDEX_HTML)
           return
         }
@@ -178,15 +183,20 @@ function get(url: string, headers: Record<string, string> = {}): Promise<Respons
 }
 
 describe('html transform', () => {
-  it('injects base href and the shim, and rebases path-absolute assets', { timeout: 15_000 }, async () => {
+  it('injects base href and the shim script, rebases assets, and drops anti-framing CSP', { timeout: 15_000 }, async () => {
     const { webServer, sidecar } = await useFixture()
     const response = await get(`${webServer.origin}${UI_BASE_PATH}`)
     expect(response.status).toBe(200)
     expect(response.headers.get('content-type')).toContain('text/html')
     expect(response.headers.get('etag')).toBeNull()
+    const csp = response.headers.get('content-security-policy') ?? ''
+    expect(csp).not.toContain('frame-ancestors')
+    expect(csp).toContain("script-src 'self' 'nonce-fake=='")
+    expect(response.headers.get('x-frame-options')).toBeNull()
     const body = await response.text()
     expect(body).toContain('<base href="/plugins/dsh-sub2api/ui/">')
-    expect(body).toContain(UI_EMBED_SHIM.slice(0, 40))
+    expect(body).toContain(`<script src="${UI_SHIM_PATH}"></script>`)
+    expect(body).not.toContain(UI_EMBED_SHIM.slice(0, 40))
     expect(body).toContain(`src="${UI_BASE_PATH}assets/index-ABC123.js"`)
     expect(body).toContain(`href="${UI_BASE_PATH}logo.svg"`)
     expect(body).toContain(`href="${UI_BASE_PATH}assets/index-DEF456.css"`)
@@ -195,6 +205,15 @@ describe('html transform', () => {
     // The base tag lands in the head, before the entry module script.
     expect(body.indexOf('<base href=')).toBeLessThan(body.indexOf('src='))
     expect(sidecar.requests.at(-1)?.path).toBe('/')
+  })
+
+  it('answers the reserved shim asset itself', { timeout: 15_000 }, async () => {
+    const { webServer, sidecar } = await useFixture()
+    const response = await get(`${webServer.origin}${UI_SHIM_PATH}`)
+    expect(response.status).toBe(200)
+    expect(response.headers.get('content-type')).toContain('javascript')
+    expect(await response.text()).toBe(UI_EMBED_SHIM)
+    expect(sidecar.requests.at(-1)).toBeUndefined()
   })
 
   it('serves the bare prefix without a trailing slash as the SPA root', { timeout: 15_000 }, async () => {
@@ -258,7 +277,7 @@ describe('asset and api mapping', () => {
     const meBody = await me.json() as { code: number; data: { role: string; run_mode: string } }
     expect(meBody.code).toBe(0)
     expect(meBody.data.role).toBe('admin')
-    expect(meBody.data.run_mode).toBe('simple')
+    expect(meBody.data.run_mode).toBe('standard')
 
     const login = await fetch(`${webServer.origin}${UI_BASE_PATH}api/v1/auth/login`, {
       method: 'POST',
