@@ -28,6 +28,22 @@ export interface GroupSummary {
   readonly platform: string
 }
 
+/** Administrator compliance acknowledgement status. */
+export interface ComplianceStatus {
+  /** Whether an acknowledgement is still owed. */
+  readonly required: boolean
+  /** The compliance document version upstream enforces. */
+  readonly version: string
+  /** Compliance document URL, Chinese. */
+  readonly documentUrlZh: string | undefined
+  /** Compliance document URL, English. */
+  readonly documentUrlEn: string | undefined
+  /** The exact acknowledgement phrase, Chinese variant. */
+  readonly ackPhraseZh: string | undefined
+  /** The exact acknowledgement phrase, English variant. */
+  readonly ackPhraseEn: string | undefined
+}
+
 /** Error raised for a non-success upstream response. */
 export class Sub2apiApiError extends Error {
   /** HTTP status of the response. */
@@ -123,6 +139,39 @@ export class Sub2apiClient {
       )
     }
     return record['data'] as T
+  }
+
+  /**
+   * Read the administrator compliance acknowledgement status (the one admin
+   * plane upstream admits before acknowledgement).
+   * @param auth - admin JWT or admin key.
+   * @returns the status upstream reports.
+   */
+  async getComplianceStatus(auth: Auth): Promise<ComplianceStatus> {
+    const data = await this.request<Record<string, unknown>>('GET', '/api/v1/admin/compliance', auth, undefined)
+    return {
+      required: data['required'] === true,
+      version: typeof data['version'] === 'string' ? data['version'] : '',
+      documentUrlZh: typeof data['document_url_zh'] === 'string' ? data['document_url_zh'] : undefined,
+      documentUrlEn: typeof data['document_url_en'] === 'string' ? data['document_url_en'] : undefined,
+      ackPhraseZh: typeof data['ack_phrase_zh'] === 'string' ? data['ack_phrase_zh'] : undefined,
+      ackPhraseEn: typeof data['ack_phrase_en'] === 'string' ? data['ack_phrase_en'] : undefined,
+    }
+  }
+
+  /**
+   * Submit the administrator compliance acknowledgement with the exact
+   * phrase upstream issued in its status.
+   * @param auth - admin JWT or admin key.
+   * @param phrase - the acknowledgement phrase verbatim from the status.
+   * @param language - which phrase (`zh` or `en`).
+   * @returns the post-acceptance status.
+   */
+  async acceptCompliance(auth: Auth, phrase: string, language: 'zh' | 'en'): Promise<void> {
+    await this.request<unknown>('POST', '/api/v1/admin/compliance/accept', auth, {
+      phrase,
+      language,
+    })
   }
 
   /**

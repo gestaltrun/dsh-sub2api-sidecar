@@ -28,12 +28,34 @@ fs.writeFileSync(envDumpPath, `${JSON.stringify({
 
 const adminEmail = process.env.FAKE_ADMIN_EMAIL ?? 'admin@sub2api.local'
 const adminPassword = process.env.FAKE_ADMIN_PASSWORD ?? 'test-password'
+// Mirror of the upstream compliance gate: when armed, admin paths outside the
+// compliance bypass answer 423 until the phrase is accepted via the bypass.
+const complianceArmed = process.env.FAKE_COMPLIANCE === 'required'
+const COMPLIANCE_VERSION = 'vTEST.1'
+const COMPLIANCE_ACK_PHRASE_ZH = '我已阅读、理解并同意测试合规承诺'
+const COMPLIANCE_ACK_PHRASE_EN = 'I have read, understood, and agree to the test compliance commitment'
+
+function complianceRequired(state) {
+  return complianceArmed && state.complianceAck === null
+}
+function complianceStatus(state) {
+  return {
+    required: complianceRequired(state),
+    version: COMPLIANCE_VERSION,
+    document_path_zh: 'docs/legal/admin-compliance.zh.md',
+    document_path_en: 'docs/legal/admin-compliance.en.md',
+    document_url_zh: 'https://example.test/compliance.zh.md',
+    document_url_en: 'https://example.test/compliance.en.md',
+    ack_phrase_zh: COMPLIANCE_ACK_PHRASE_ZH,
+    ack_phrase_en: COMPLIANCE_ACK_PHRASE_EN,
+  }
+}
 
 function loadState() {
   try {
     return JSON.parse(fs.readFileSync(statePath, 'utf8'))
   } catch {
-    return { adminKey: null, jwt: null, groups: [], keys: [], regenerateCount: 0, loginCount: 0, accounts: [], quotaRoutes: {} }
+    return { adminKey: null, jwt: null, groups: [], keys: [], regenerateCount: 0, loginCount: 0, accounts: [], quotaRoutes: {}, complianceAck: null }
   }
 }
 function saveState(state) {
@@ -87,6 +109,7 @@ const server = http.createServer((req, res) => {
     }
 
     const isAdminPath = path.startsWith('/api/v1/admin/')
+    const isComplianceBypass = path === '/api/v1/admin/compliance' || path.startsWith('/api/v1/admin/compliance/')
     const adminKey = req.headers['x-api-key']
     if (isAdminPath) {
       if (adminKey !== undefined && adminKey !== '') {
@@ -117,6 +140,25 @@ const server = http.createServer((req, res) => {
       return
     }
 
+    if (path === '/api/v1/admin/compliance' && req.method === 'GET') {
+      ok(res, complianceStatus(state))
+      return
+    }
+    if (path === '/api/v1/admin/compliance/accept' && req.method === 'POST') {
+      const phrase = typeof body.phrase === 'string' ? body.phrase.trim() : ''
+      if (phrase !== COMPLIANCE_ACK_PHRASE_ZH && phrase !== COMPLIANCE_ACK_PHRASE_EN) {
+        send(res, 400, { code: 'ADMIN_COMPLIANCE_INVALID_PHRASE', message: 'confirmation phrase does not match' })
+        return
+      }
+      state.complianceAck = { version: COMPLIANCE_VERSION, accepted_at: new Date().toISOString() }
+      saveState(state)
+      ok(res, complianceStatus(state))
+      return
+    }
+    if (isAdminPath && complianceRequired(state)) {
+      send(res, 423, { code: 'ADMIN_COMPLIANCE_ACK_REQUIRED', message: 'administrator compliance acknowledgement is required' })
+      return
+    }
     if (path === '/api/v1/admin/settings/admin-api-key/regenerate' && req.method === 'POST') {
       state.adminKey = `admin-${hex()}`
       state.regenerateCount += 1

@@ -80,7 +80,9 @@ On `apply` it runs one supervised boot:
    `AUTO_SETUP=true`; poll `/health` until it answers within
    `config.healthTimeoutMs`.
 5. Bootstrap (idempotent, reusing stored keys): log in with the AUTO_SETUP
-   admin credentials → regenerate the admin settings API key (`admin-…`) →
+   admin credentials → clear the upstream administrator compliance gate when
+   it is armed (`compliance.acceptOnBoot`, document URL logged) → regenerate
+   the admin settings API key (`admin-…`) →
    find-or-create the `composite` group → create the panel API key bound to
    that group (`sk-…`). Both keys are stored through the credentials seam
    (its local provider keeps them `0600`) and never logged. After issuance the
@@ -108,6 +110,7 @@ Configuration (cordis.yml `config` on the plugin row; every field optional):
 | `healthTimeoutMs` / `healthPollMs` | `120000` / `500` | `/health` budget and probe interval. |
 | `stopGraceMs` | `8000` | SIGTERM→SIGKILL grace and `pg_ctl` stop wait. |
 | `adminEmail` / `adminPassword` | `admin@sub2api.local` / generated | AUTO_SETUP admin account; a generated password is kept in `run/admin-password` (`0600`) for later logins and never logged. |
+| `compliance.acceptOnBoot` | `true` | Acknowledge upstream's administrator compliance commitment on boot (echoing the exact phrase upstream issues, document URL logged). When `false`, a required acknowledgement fails the boot loudly naming the document. |
 | `group.name` / `group.description` | `dsh-composite` | The composite group the bootstrap ensures. |
 | `route.name` / `route.api` / `route.displayName` / `route.models` | `sub2api` / `openai-completions` / `Sub2API (sub2api)` / one Claude model | The hand-declared provider route written into `llm-pi-ai`; set `models` to what your deployment actually serves. |
 | `redis.skip` / `redis.external` | `false` / – | Skip the bundled component (recorded), or point at an external Redis. |

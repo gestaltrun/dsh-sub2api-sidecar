@@ -70,7 +70,8 @@ CI（`.github/workflows/runtime-pack.yml`）在 push 与 `workflow_dispatch` 时
    可替换内嵌组件。
 4. 以 `RUN_MODE=simple`、`SERVER_HOST=127.0.0.1`、`AUTO_SETUP=true` 启动
    `sub2api`，在 `config.healthTimeoutMs` 内轮询 `/health`。
-5. Bootstrap（幂等，凭据复用）：用 AUTO_SETUP 管理员凭据登录 → regenerate
+5. Bootstrap（幂等，凭据复用）：用 AUTO_SETUP 管理员凭据登录 → 待上游管理员合规
+   门槛生效时先行确认（`compliance.acceptOnBoot`，记录文档 URL）→ regenerate
    admin settings API key（`admin-…`）→ find-or-create `composite` 组 → 创建
    绑定该组的面板 API key（`sk-…`）。两把 key 经 credentials seam 存储（本地
    provider 以 `0600` 保存），绝不写日志。签发后复核约定：`sk-` key 访问 admin
@@ -95,6 +96,7 @@ PostgreSQL。`data/` 永不删除或清空；重载复用既有 key，不重复�
 | `healthTimeoutMs` / `healthPollMs` | `120000` / `500` | `/health` 预算与探测间隔。 |
 | `stopGraceMs` | `8000` | SIGTERM→SIGKILL 宽限与 `pg_ctl` stop 等待。 |
 | `adminEmail` / `adminPassword` | `admin@sub2api.local` / 随机生成 | AUTO_SETUP 管理员账号；生成的密码保存在 `run/admin-password`（`0600`）供后续登录，绝不写日志。 |
+| `compliance.acceptOnBoot` | `true` | 启动时确认上游的管理员合规承诺（原样回传上游下发的确认短语，并记录文档 URL）。设为 `false` 时，未确认的合规门槛会让启动大声失败并指明文档。 |
 | `group.name` / `group.description` | `dsh-composite` | bootstrap 确保的 composite 组。 |
 | `route.name` / `route.api` / `route.displayName` / `route.models` | `sub2api` / `openai-completions` / `Sub2API (sub2api)` / 一个 Claude 模型 | 写入 `llm-pi-ai` 的手声明路由；`models` 请按部署实际服务的模型调整。 |
 | `redis.skip` / `redis.external` | `false` / – | 跳过内嵌组件（留痕），或指向外部 Redis。 |

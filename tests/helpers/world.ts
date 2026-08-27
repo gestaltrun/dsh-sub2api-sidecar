@@ -98,6 +98,8 @@ export interface WorldOptions {
   initdbFails?: boolean
   /** Make the fake sub2api health endpoint fail. */
   healthFails?: boolean
+  /** Arm the fake upstream's administrator compliance gate (423 until acknowledged). */
+  complianceRequired?: boolean
   /** Config overrides layered onto the defaults. */
   configOverrides?: Partial<Parameters<typeof resolveConfig>[0]> & { adminPassword?: string }
 }
@@ -149,6 +151,7 @@ export async function createWorld(options: WorldOptions = {}): Promise<World> {
     ...(options.healthFails === true ? ["FAKE_HEALTH='fail' \\"] : []),
     `FAKE_ADMIN_EMAIL='${config.adminEmail}' \\`,
     `FAKE_ADMIN_PASSWORD='${config.adminPassword}' \\`,
+    ...(options.complianceRequired === true ? ["FAKE_COMPLIANCE='required' \\"] : []),
     `exec '${node}' '${path.join(helpersDir, 'fake-sub2api.mjs')}'`,
     '',
   ].join('\n'), { mode: 0o755 })
