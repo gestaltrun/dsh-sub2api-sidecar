@@ -137,6 +137,16 @@ export class Supervisor {
   }
 
   /**
+   * The loopback port the supervised server listens on this boot; undefined
+   * until the boot reached the server step or after a stopped chain. This is
+   * the shared port truth: the host-half services read it from here instead
+   * of deriving a second source.
+   */
+  get sidecarPort(): number | undefined {
+    return this.serverPort
+  }
+
+  /**
    * Start the chain once per instance; concurrent and repeated calls share the
    * same startup.
    * @throws when any step fails; earlier steps are stopped by the dispose

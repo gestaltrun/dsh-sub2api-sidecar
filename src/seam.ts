@@ -1,13 +1,16 @@
 /**
  * Structural types for the DeepSeek Harness service seams this plugin
  * consumes. The plugin is loaded by the harness Loader, which provides the
- * real `@deepseek-ai/dsh-subprocess`, `@deepseek-ai/dsh-credentials`, and
- * `@deepseek-ai/dsh-settings` services; these local interfaces pin the exact
- * member subset the supervisor calls so this package builds and tests
+ * real `@deepseek-ai/dsh-subprocess`, `@deepseek-ai/dsh-credentials`,
+ * `@deepseek-ai/dsh-settings`, and `@deepseek-ai/dsh-host-webserver`
+ * services; these local interfaces pin the exact member subset the supervisor
+ * and the host-half services call so this package builds and tests
  * standalone without importing the private harness packages.
  *
  * @module dsh-sub2api-sidecar/seam
  */
+
+import type { IncomingMessage, ServerResponse } from 'node:http'
 
 /** A harness context logger (`ctx.logger`): printf-style formatting. */
 export interface LoggerLike {
@@ -137,6 +140,37 @@ export interface SettingsService {
    * @param patch - plain-object patch over the user section.
    */
   update(namespace: string, patch: object): Promise<void>
+}
+
+/** Route match kind: `exact` matches the pathname verbatim; `prefix` matches the pathname and anything below it. */
+export type WebRouteKind = 'exact' | 'prefix'
+
+/** One HTTP route registration on the host web server. */
+export interface WebRoute {
+  /** How `path` matches the request pathname. */
+  kind: WebRouteKind
+  /** Absolute pathname without a trailing slash. */
+  path: string
+  /**
+   * Own the full response lifecycle of every matched request.
+   * @param req - the accepted request.
+   * @param res - the response to answer.
+   */
+  handler(req: IncomingMessage, res: ServerResponse): void | Promise<void>
+}
+
+/** The `ctx.webServer` seam subset the host-half services use. */
+export interface WebServerService {
+  /**
+   * Register one named route.
+   * @param route - kind, path, and the owning handler.
+   * @returns the disposer removing the route.
+   */
+  register(route: WebRoute): () => void
+  /** The listened port; present once the host server is initialized. */
+  readonly port?: number
+  /** The configured bind host; present once the host server is initialized. */
+  readonly host?: '127.0.0.1' | '0.0.0.0'
 }
 
 /** The service seams plus logger the supervisor needs from the host context. */

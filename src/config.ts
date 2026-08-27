@@ -9,6 +9,7 @@
 
 import { childPath, defineSyncSchema, SchemaError, StandardSchema } from './standard-schema.ts'
 import type { SchemaIssue } from './standard-schema.ts'
+import { parseAllowedOrigin } from './trust.ts'
 
 /** One hand-declared model on the composite route. */
 export interface RouteModel {
@@ -69,6 +70,17 @@ export interface RawSidecarConfig {
     /** Reference for the `sk-` composite inference key. */
     inferenceRef?: string
   }
+  /** Host-side injection forwarding plane. */
+  proxy?: {
+    /** When false the admin proxy prefix and the snapshot route stay unregistered. */
+    enabled?: boolean
+    /** Extra absolute origins trusted by the proxy and snapshot routes besides the host's own. */
+    allowedOrigins?: string[]
+    /** Per-request upstream budget for one forwarded admin call. */
+    timeoutMs?: number
+  }
+  /** Interval between quota snapshot polls of the sidecar admin API. */
+  quotaPollMs?: number
 }
 
 /** Resolved configuration: every field present, validated, and defaulted. */
@@ -107,6 +119,17 @@ export interface SidecarConfig {
   }
   /** Credential references for the two keys. */
   credentials: { adminRef: string; inferenceRef: string }
+  /** Host-side injection forwarding plane. */
+  proxy: {
+    /** When false the admin proxy prefix and the snapshot route stay unregistered. */
+    enabled: boolean
+    /** Absolute origins trusted besides the host's own, normalized. */
+    allowedOrigins: string[]
+    /** Per-request upstream budget for one forwarded admin call. */
+    timeoutMs: number
+  }
+  /** Interval between quota snapshot polls. */
+  quotaPollMs: number
 }
 
 /** Lowest port the default scan range starts at. */
@@ -144,6 +167,15 @@ export const DEFAULT_ADMIN_CREDENTIAL_REF = 'SUB2API_ADMIN_API_KEY'
 
 /** Default credential reference for the `sk-` composite inference key. */
 export const DEFAULT_INFERENCE_CREDENTIAL_REF = 'SUB2API_API_KEY'
+
+/** Default state of the host-side injection forwarding plane. */
+export const DEFAULT_PROXY_ENABLED = true
+
+/** Default per-request upstream budget for one forwarded admin call. */
+export const DEFAULT_PROXY_TIMEOUT_MS = 30_000
+
+/** Default interval between quota snapshot polls. */
+export const DEFAULT_QUOTA_POLL_MS = 60_000
 
 /**
  * The conventional local Redis endpoint. It defaults a configured external
@@ -313,6 +345,29 @@ function validateRaw(ctx: ValidateContext, path: ReadonlyArray<PropertyKey>, val
     expectString(ctx, childPath(credentialsPath, 'inferenceRef'), credentials['inferenceRef'], REF_PATTERN)
   }
 
+  const proxy = expectObject(ctx, childPath(path, 'proxy'), raw['proxy'])
+  if (proxy) {
+    const proxyPath = childPath(path, 'proxy')
+    if (proxy['enabled'] !== undefined && typeof proxy['enabled'] !== 'boolean') {
+      fail(ctx, childPath(proxyPath, 'enabled'), 'must be a boolean')
+    }
+    const origins = proxy['allowedOrigins']
+    if (origins !== undefined) {
+      if (!Array.isArray(origins)) {
+        fail(ctx, childPath(proxyPath, 'allowedOrigins'), 'must be an array of origin strings')
+      } else {
+        for (const [index, origin] of origins.entries()) {
+          if (typeof origin !== 'string' || origin.length === 0) {
+            fail(ctx, childPath(childPath(proxyPath, 'allowedOrigins'), index), 'must be a non-empty string')
+          }
+        }
+      }
+    }
+    expectPositiveInt(ctx, childPath(proxyPath, 'timeoutMs'), proxy['timeoutMs'])
+  }
+
+  expectPositiveInt(ctx, childPath(path, 'quotaPollMs'), raw['quotaPollMs'])
+
   return raw as RawSidecarConfig
 }
 
@@ -376,6 +431,18 @@ export function resolveConfig(raw: RawSidecarConfig, env: NodeJS.ProcessEnv): Si
       adminRef: raw.credentials?.adminRef ?? DEFAULT_ADMIN_CREDENTIAL_REF,
       inferenceRef: raw.credentials?.inferenceRef ?? DEFAULT_INFERENCE_CREDENTIAL_REF,
     },
+    proxy: {
+      enabled: raw.proxy?.enabled ?? DEFAULT_PROXY_ENABLED,
+      allowedOrigins: (raw.proxy?.allowedOrigins ?? []).map((origin) => {
+        try {
+          return parseAllowedOrigin(origin)
+        } catch {
+          throw new Error(`dsh-sub2api-sidecar: proxy.allowedOrigins entry "${origin}" is not a bare http(s) origin`)
+        }
+      }),
+      timeoutMs: raw.proxy?.timeoutMs ?? DEFAULT_PROXY_TIMEOUT_MS,
+    },
+    quotaPollMs: raw.quotaPollMs ?? DEFAULT_QUOTA_POLL_MS,
   }
 }
 

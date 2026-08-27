@@ -33,7 +33,7 @@ function loadState() {
   try {
     return JSON.parse(fs.readFileSync(statePath, 'utf8'))
   } catch {
-    return { adminKey: null, jwt: null, groups: [], keys: [], regenerateCount: 0, loginCount: 0 }
+    return { adminKey: null, jwt: null, groups: [], keys: [], regenerateCount: 0, loginCount: 0, accounts: [], quotaRoutes: {} }
   }
 }
 function saveState(state) {
@@ -132,6 +132,17 @@ const server = http.createServer((req, res) => {
       const platform = url.searchParams.get('platform')
       const groups = platform === null ? state.groups : state.groups.filter((group) => group.platform === platform)
       ok(res, groups)
+      return
+    }
+    // Accounts list plus per-account quota endpoints, preseedable through the
+    // state file (`accounts`, `quotaRoutes`) for the host-half services.
+    if (path.startsWith('/api/v1/admin/accounts') && req.method === 'GET') {
+      const accounts = state.accounts ?? []
+      ok(res, { items: accounts, total: accounts.length, page: 1, page_size: 100, pages: 1 })
+      return
+    }
+    if (req.method === 'GET' && state.quotaRoutes && state.quotaRoutes[path] !== undefined) {
+      ok(res, state.quotaRoutes[path])
       return
     }
     if (path === '/api/v1/admin/groups' && req.method === 'POST') {
