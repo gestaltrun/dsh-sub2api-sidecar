@@ -1,0 +1,14 @@
+# DeepSeek Harness bundle layer for dsh-sub2api-sidecar. The row's config is
+# the composition base; a profile's own cordis.patch.yml or a --patch overlay
+# can override any field by restating the row.
+- insert:
+    - id: dsh-sub2api-sidecar
+      name: dsh-sub2api-sidecar
+      config:
+        enabled: true
+        route:
+          models:
+            # The composite group serves whatever models its channels expose;
+            # adjust this list to the models your sub2api deployment relays.
+            - id: claude-sonnet-4-5-20250929
+              name: Claude Sonnet 4.5
