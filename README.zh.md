@@ -53,9 +53,9 @@ CI（`.github/workflows/runtime-pack.yml`）在 push 与 `workflow_dispatch` 时
 
 仓库根目录即可安装的 bundle（`package.json` 声明 `dsh.bundle.patch`，插件行在
 `cordis.patch.yml`）。function 插件 `dsh-sub2api-sidecar` 通过 `inject` 要求宿主
-提供 `subprocess`、`credentials`、`settings` 三个 seam，但对 harness 包没有 npm
-依赖：所用 seam 面在 `src/seam.ts` 以结构类型钉住，因此本包可独立安装，在任何
-提供这三个服务及 `llm-pi-ai` settings namespace 的组合中运行。
+提供 `subprocess`、`credentials`、`settings`、`webServer` 四个 seam，但对 harness
+包没有 npm 依赖：所用 seam 面在 `src/seam.ts` 以结构类型钉住，因此本包可独立
+安装，在任何提供这四个服务及 `llm-pi-ai` settings namespace 的组合中运行。
 
 `apply` 执行一次受监督的启动：
 
@@ -99,19 +99,79 @@ PostgreSQL。`data/` 永不删除或清空；重载复用既有 key，不重复�
 | `route.name` / `route.api` / `route.displayName` / `route.models` | `sub2api` / `openai-completions` / `Sub2API (sub2api)` / 一个 Claude 模型 | 写入 `llm-pi-ai` 的手声明路由；`models` 请按部署实际服务的模型调整。 |
 | `redis.skip` / `redis.external` | `false` / – | 跳过内嵌组件（留痕），或指向外部 Redis。 |
 | `credentials.adminRef` / `credentials.inferenceRef` | `SUB2API_ADMIN_API_KEY` / `SUB2API_API_KEY` | 两把 key 的凭据引用。 |
+| `proxy.enabled` | `true` | 是否挂载注入转发面前缀与额度快照路由。 |
+| `proxy.allowedOrigins` | `[]` | 除宿主自身 origin 外，两条宿主路由额外信任的绝对 origin。 |
+| `proxy.timeoutMs` | `30000` | 单次转发调用或额度探测的上游预算。 |
+| `quotaPollMs` | `60000` | 额度快照的轮询间隔。 |
 
 管理员登录账号只因上游 AUTO_SETUP 的要求而存在，不对用户暴露；产品面只有两把
 key（规格 v1.1，gestaltrun/deepseek-harness-gestalt#346）。
+
+## Host 半服务
+
+健康启动后，插件在 web server seam 上挂载两个 Host 侧服务。两者共用同一准入
+姿态：仅回环对端可入；浏览器 `Origin` 头必须是宿主自身 origin 或
+`proxy.allowedOrigins` 中的条目（另一个回环端口对浏览器而言是不同且不受信的
+origin）；无 `Origin` 的请求仍必须携带回环 `Host` 头——这正是阻断 DNS
+rebinding 的一道闸。被拒请求得到 `403`，绝不触达 sidecar。
+
+### 注入转发面
+
+`/plugins/dsh-sub2api/admin/*` 映射到 `http://127.0.0.1:<sidecarPort>/api/v1/admin/*`：
+
+- 每次转发统一注入 `x-api-key: <admin-…>`，按凭据引用（`credentials.adminRef`）
+  现场解析；renderer 永不接触 key，key 也不会出现在任何响应体、响应头或日志行。
+- 转发前剥离客户端自带的 `authorization`、`cookie`、`x-api-key`，以及 `origin`、
+  `referer` 与逐跳头。
+- 纯转发：方法、路径、查询、请求体、状态码与载荷原样透传，上游 401/403/step-up
+  语义原样到达调用方。无任何业务端点、无任何改写；`set-cookie` 被丢弃，上游会话
+  不会变成宿主 origin 的 cookie。
+- sidecar 未运行或 key 未就绪时，转发面回答 `503`（`SIDECAR_UNAVAILABLE` /
+  `ADMIN_KEY_UNAVAILABLE`）；sidecar 不可达呈现为 `502`。绝不伪造成功。
+- 仅 HTTP：WebSocket upgrade 不在转发范围内。
+
+### 额度快照
+
+`GET /plugins/dsh-sub2api/quota-snapshot` 返回聚合后的只读快照（其他方法
+`405`）：
+
+```json
+{
+  "status": "ready | unavailable",
+  "reason": "不可用时给出原因",
+  "generatedAt": "本快照构建时间（ISO）",
+  "lastSuccessAt": "最近一次完整成功轮询时间（ISO）",
+  "accounts": [
+    { "id": 1, "name": "...", "platform": "anthropic", "accountType": "oauth",
+      "status": "active", "schedulable": true, "quota": { "tier": "..." } }
+  ]
+}
+```
+
+- 轮询：每 `quotaPollMs` 读取一次 sidecar admin API——accounts 列表加各账号的
+  平台 quota 端点——并原子替换已发布快照。
+- 平台分档（规格 v1.1）：`openai`、`grok` 与国产三家（`kimi`/`zhipu`/`deepseek`）
+  为 `remote-probed`，取自各自上游 quota 端点（用量 `windows`，按量付费另含
+  `balance`）；其余平台为 `local-derived`，从 accounts 列表自有字段映射
+  （`rateLimitResetAt`、`overloadUntil`、`sessionWindow` 与 API-key 的
+  `apiQuota` 限额）。单账号端点失败只在该账号上记录 `error`，不拖垮整轮轮询。
+- 显式不可用：凡非完整成功轮询产出的快照一律 `unavailable` 并带 `reason`
+  （`sidecar-not-ready`、`admin-key-unavailable`、`accounts-list-failed`）。
+  上一次的 accounts 与 `lastSuccessAt` 保留，过期数据始终带标签；首次成功之前
+  `accounts` 为空——绝不拿空数据冒充成功。
+- 快照是字段白名单：上游凭证形态的字段不可能进入快照，任何 key 明文都不会出现。
 
 ### 开发
 
 ```sh
 pnpm install
-pnpm test        # vitest：生命周期、约定、redis、配置四套测试
+pnpm test        # vitest：生命周期、约定、redis、配置、host 半服务各套测试
 pnpm typecheck
 pnpm build       # tsc 产出 lib/（ESM，Node >= 22）
 ```
 
 测试经由真实的进程树 subprocess provider 驱动假 sub2api（`node:http` 实现
 登录、admin key、组、面板 key 端点并复刻上游鉴权分流）、假 `initdb`/`pg_ctl`
-脚本与假 redis 监听器，因此 dispose 与幂等断言观察到的是真实进程退出。
+脚本与假 redis 监听器，因此 dispose 与幂等断言观察到的是真实进程退出。host 半
+各套测试另有进程内假 admin API（逐请求记录请求头）与可派发的 web server seam
+替身，注入、剥离、准入与快照新鲜度都在真实回环 HTTP 上断言。

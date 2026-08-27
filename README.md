@@ -58,11 +58,12 @@ here.
 
 The repository root is the installable bundle (`dsh.bundle.patch` in
 `package.json`, plugin rows in `cordis.patch.yml`). The function plugin
-`dsh-sub2api-sidecar` requires the host seams `subprocess`, `credentials`, and
-`settings` (declared via `inject`) and mounts no npm dependency on the harness
-packages: the seam surfaces it uses are pinned structurally in `src/seam.ts`,
-so the bundle installs standalone and runs inside any composition that
-provides the three services plus the `llm-pi-ai` settings namespace.
+`dsh-sub2api-sidecar` requires the host seams `subprocess`, `credentials`,
+`settings`, and `webServer` (declared via `inject`) and mounts no npm
+dependency on the harness packages: the seam surfaces it uses are pinned
+structurally in `src/seam.ts`, so the bundle installs standalone and runs
+inside any composition that provides the four services plus the `llm-pi-ai`
+settings namespace.
 
 On `apply` it runs one supervised boot:
 
@@ -111,16 +112,84 @@ Configuration (cordis.yml `config` on the plugin row; every field optional):
 | `route.name` / `route.api` / `route.displayName` / `route.models` | `sub2api` / `openai-completions` / `Sub2API (sub2api)` / one Claude model | The hand-declared provider route written into `llm-pi-ai`; set `models` to what your deployment actually serves. |
 | `redis.skip` / `redis.external` | `false` / – | Skip the bundled component (recorded), or point at an external Redis. |
 | `credentials.adminRef` / `credentials.inferenceRef` | `SUB2API_ADMIN_API_KEY` / `SUB2API_API_KEY` | Credential references for the two keys. |
+| `proxy.enabled` | `true` | Mount the admin injection proxy prefix and the quota snapshot route. |
+| `proxy.allowedOrigins` | `[]` | Extra absolute origins trusted by both host-side routes besides the host's own. |
+| `proxy.timeoutMs` | `30000` | Per-request upstream budget for one forwarded call or quota probe. |
+| `quotaPollMs` | `60000` | Interval between quota snapshot polls. |
 
 The admin login account exists only because upstream AUTO_SETUP requires one;
 it is not surfaced to the user, and the product surfaces are the two keys
 (spec v1.1, gestaltrun/deepseek-harness-gestalt#346).
 
+## Host-half services
+
+After a healthy boot the plugin mounts two host-side services on the web
+server seam. Both share one admission posture: only loopback peers are
+admitted, a browser `Origin` header must be the host's own origin or a
+`proxy.allowedOrigins` entry (another loopback port is a different, untrusted
+origin), and an origin-absent request must still carry a loopback `Host`
+header — which is what blocks DNS rebinding. Denied requests get `403` and
+never reach the sidecar.
+
+### Admin injection proxy
+
+`/plugins/dsh-sub2api/admin/*` maps onto `http://127.0.0.1:<sidecarPort>/api/v1/admin/*`:
+
+- Every forwarded call injects `x-api-key: <admin-…>`, resolved from the
+  credential reference (`credentials.adminRef`); the renderer never touches
+  the key and it never appears in a response body, header, or log line.
+- Client-supplied `authorization`, `cookie`, and `x-api-key` are stripped
+  before forwarding, along with `origin`, `referer`, and hop-by-hop headers.
+- Pure forwarding: method, path, query, body, status, and payload pass
+  through unchanged, so upstream 401/403/step-up semantics reach the caller
+  verbatim. There are no business endpoints and no rewrites; `set-cookie` is
+  dropped so no upstream session can become a host-origin cookie.
+- While the sidecar is down or the key is not provisioned the proxy answers
+  `503` (`SIDECAR_UNAVAILABLE` / `ADMIN_KEY_UNAVAILABLE`); an unreachable
+  sidecar surfaces as `502`. It never fabricates a success.
+- HTTP only: WebSocket upgrades are not proxied.
+
+### Quota snapshot
+
+`GET /plugins/dsh-sub2api/quota-snapshot` serves the aggregated read-only
+snapshot (other methods get `405`):
+
+```json
+{
+  "status": "ready | unavailable",
+  "reason": "present when unavailable",
+  "generatedAt": "ISO time this snapshot was built",
+  "lastSuccessAt": "ISO time of the last fully successful poll",
+  "accounts": [
+    { "id": 1, "name": "...", "platform": "anthropic", "accountType": "oauth",
+      "status": "active", "schedulable": true, "quota": { "tier": "..." } }
+  ]
+}
+```
+
+- Polling: every `quotaPollMs` the service reads the sidecar admin API — the
+  accounts list plus each account's platform quota endpoint — and atomically
+  replaces the published snapshot.
+- Platform tiers (spec v1.1 分档): `openai`, `grok`, and the CN providers
+  (`kimi`/`zhipu`/`deepseek`) are `remote-probed` from their upstream quota
+  endpoints (usage `windows` and, for pay-as-you-go, `balance`); every other
+  platform is `local-derived` from the accounts list's own fields
+  (`rateLimitResetAt`, `overloadUntil`, `sessionWindow`, and the API-key
+  `apiQuota` limits). A per-account endpoint failure records `error` on that
+  account instead of failing the poll.
+- Explicit unavailability: a snapshot not produced by a fully successful poll
+  is `unavailable` with a `reason` (`sidecar-not-ready`,
+  `admin-key-unavailable`, `accounts-list-failed`). The previous accounts and
+  `lastSuccessAt` are retained so stale data stays labeled; before the first
+  success `accounts` is empty — never empty data dressed up as ready.
+- The snapshot is a field whitelist: credential-shaped upstream fields cannot
+  appear in it, and no key material is ever included.
+
 ### Development
 
 ```sh
 pnpm install
-pnpm test        # vitest: lifecycle, convention, redis, config suites
+pnpm test        # vitest: lifecycle, convention, redis, config, host services suites
 pnpm typecheck
 pnpm build       # tsc emits lib/ (ESM, Node >= 22)
 ```
@@ -129,4 +198,7 @@ The tests run a fake sub2api (an `node:http` server implementing the login,
 admin-key, group, and panel-key endpoints with the upstream auth split), fake
 `initdb`/`pg_ctl` scripts, and a fake redis listener through a real
 process-tree subprocess provider, so dispose and idempotency assertions
-observe real process exits.
+observe real process exits. The host-half suites add an in-process fake admin
+API with per-request header recording and a dispatching web server seam
+double, so injection, stripping, admission, and snapshot freshness are
+asserted over real loopback HTTP.
