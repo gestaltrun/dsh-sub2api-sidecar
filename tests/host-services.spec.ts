@@ -83,6 +83,14 @@ describe('assembled host services', () => {
     const payload = await proxied.json() as { code: number; data: { exists: boolean } }
     expect(payload.data.exists).toBe(true)
 
+    // The embedded-console passthrough is registered by the same wiring and
+    // injects the key on its admin-plane subpaths.
+    const embedded = await fetch(`${origin}/plugins/dsh-sub2api/ui/api/v1/admin/settings/admin-api-key`, {
+      headers: { origin },
+    })
+    expect(embedded.status).toBe(200)
+    expect(((await embedded.json()) as { code: number }).code).toBe(0)
+
     // Cross-origin calls are refused at the seam.
     const forbidden = await fetch(`${origin}${ADMIN_PROXY_PREFIX}/settings/admin-api-key`, {
       headers: { origin: 'http://evil.example' },

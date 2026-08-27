@@ -95,7 +95,7 @@ export function registerAdminProxy(options: AdminProxyOptions): AdminProxyRegist
 }
 
 /** Answer with a JSON error envelope carrying no request or credential detail. */
-function answerJson(res: ServerResponse, status: number, code: string, message: string): void {
+export function answerJson(res: ServerResponse, status: number, code: string, message: string): void {
   res.writeHead(status, { 'content-type': 'application/json; charset=utf-8', 'cache-control': 'no-store' })
   res.end(JSON.stringify({ code, message }))
 }
@@ -147,7 +147,7 @@ async function handle(
     }
   }
 
-  const headers = forwardHeaders(req)
+  const headers = forwardRequestHeaders(req)
   headers['x-api-key'] = credential.value
   const controller = new AbortController()
   const timer = setTimeout(() => { controller.abort() }, options.config.proxy.timeoutMs)
@@ -173,10 +173,7 @@ async function handle(
     return
   }
 
-  const responseHeaders: Record<string, string> = {}
-  upstream.headers.forEach((value, name) => {
-    if (!STRIPPED_RESPONSE_HEADERS.has(name)) responseHeaders[name] = value
-  })
+  const responseHeaders = relayResponseHeaders(upstream)
   res.writeHead(upstream.status, responseHeaders)
   options.logger.info('dsh-sub2api-sidecar: proxy %s %s -> %d', req.method ?? '?', requestPath, upstream.status)
   if (upstream.body === null) {
@@ -229,11 +226,25 @@ async function readBody(req: IncomingMessage): Promise<Buffer> {
 }
 
 /** Copy the safe request headers onto the upstream request. */
-function forwardHeaders(req: IncomingMessage): Record<string, string> {
+export function forwardRequestHeaders(req: IncomingMessage): Record<string, string> {
   const headers: Record<string, string> = {}
   for (const [name, value] of Object.entries(req.headers)) {
     if (typeof value !== 'string' || STRIPPED_REQUEST_HEADERS.has(name)) continue
     headers[name] = value
   }
+  return headers
+}
+
+/**
+ * Copy the upstream response headers that may reach the caller, dropping
+ * hop-by-hop headers and upstream session cookies.
+ * @param upstream - the upstream response.
+ * @returns the relayed header map.
+ */
+export function relayResponseHeaders(upstream: Response): Record<string, string> {
+  const headers: Record<string, string> = {}
+  upstream.headers.forEach((value, name) => {
+    if (!STRIPPED_RESPONSE_HEADERS.has(name)) headers[name] = value
+  })
   return headers
 }
