@@ -131,6 +131,7 @@ describe('platform tier mapping', () => {
     expect(snapshot.status).toBe('ready')
     expect(snapshot.reason).toBeUndefined()
     expect(snapshot.lastSuccessAt).toBe(snapshot.generatedAt)
+    expect(snapshot.sidecarPort).toBe(fixture.sidecar.port)
     expect(snapshot.accounts).toHaveLength(5)
 
     const byId = new Map(snapshot.accounts.map((account) => [account.id, account]))
@@ -215,6 +216,7 @@ describe('explicit unavailability', () => {
     service.start()
     await until(() => service.snapshot().reason === 'sidecar-not-ready')
     expect(service.snapshot().status).toBe('unavailable')
+    expect(service.snapshot().sidecarPort).toBeUndefined()
     expect(service.snapshot().accounts).toEqual([])
     await service.dispose()
   })

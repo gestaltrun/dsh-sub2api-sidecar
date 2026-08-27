@@ -118,6 +118,8 @@ export interface QuotaSnapshot {
   readonly generatedAt: string
   /** ISO time of the last fully successful poll; undefined before the first one. */
   readonly lastSuccessAt: string | undefined
+  /** The supervised server's loopback port while it runs this poll; undefined when down. The desktop embed uses it for the direct-console fallback link. */
+  readonly sidecarPort: number | undefined
   /** Accounts from the last fully successful poll; empty before the first one. */
   readonly accounts: readonly SnapshotAccount[]
 }
@@ -155,6 +157,7 @@ export class QuotaSnapshotService {
       reason: 'no-poll-yet',
       generatedAt: new Date().toISOString(),
       lastSuccessAt: undefined,
+      sidecarPort: options.sidecar.port,
       accounts: [],
     }
   }
@@ -204,19 +207,19 @@ export class QuotaSnapshotService {
     const generatedAt = new Date().toISOString()
     const port = sidecar.port
     if (port === undefined) {
-      this.publish('sidecar-not-ready', generatedAt)
+      this.publish('sidecar-not-ready', generatedAt, undefined)
       return
     }
     const credential = await this.options.credentials.resolve(config.credentials.adminRef)
     if (credential === undefined) {
-      this.publish('admin-key-unavailable', generatedAt)
+      this.publish('admin-key-unavailable', generatedAt, port)
       return
     }
     let accounts: SnapshotAccount[]
     try {
       accounts = await this.pollAccounts(port, credential.value)
     } catch (error) {
-      this.publish('accounts-list-failed', generatedAt)
+      this.publish('accounts-list-failed', generatedAt, port)
       logger.warn('dsh-sub2api-sidecar: quota poll failed to list accounts (%s)', describe(error))
       return
     }
@@ -225,18 +228,20 @@ export class QuotaSnapshotService {
       reason: undefined,
       generatedAt,
       lastSuccessAt: generatedAt,
+      sidecarPort: port,
       accounts,
     }
     logger.info('dsh-sub2api-sidecar: quota snapshot refreshed with %d accounts', accounts.length)
   }
 
   /** Replace the published snapshot with an unavailable one, retaining prior data. */
-  private publish(reason: string, generatedAt: string): void {
+  private publish(reason: string, generatedAt: string, sidecarPort: number | undefined): void {
     this.current = {
       status: 'unavailable',
       reason,
       generatedAt,
       lastSuccessAt: this.current.lastSuccessAt,
+      sidecarPort,
       accounts: this.current.accounts,
     }
   }
