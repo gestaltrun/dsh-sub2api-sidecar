@@ -1,0 +1,74 @@
+/* The embed container fills the settings shell's content column; the console
+ * iframe fills it edge to edge. Semantic alias tokens only. */
+
+.container {
+  display: flex;
+  flex-direction: column;
+  width: 100%;
+  height: 100%;
+  min-height: 0;
+  background: var(--dsw-alias-bg-layer-1);
+}
+
+.frame {
+  flex: 1;
+  width: 100%;
+  border: none;
+  background: var(--dsw-alias-bg-base);
+}
+
+.fallback {
+  align-items: center;
+  justify-content: center;
+  gap: 12px;
+  padding: 32px;
+  text-align: center;
+}
+
+.title {
+  margin: 0;
+  font-size: 15px;
+  font-weight: 600;
+  color: var(--dsw-alias-label-primary);
+}
+
+.status {
+  margin: 0;
+  max-width: 460px;
+  font-size: 13px;
+  line-height: 1.6;
+  color: var(--dsw-alias-label-secondary);
+}
+
+.actions {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.retry {
+  padding: 6px 16px;
+  border: 1px solid var(--dsw-alias-border-l2);
+  border-radius: 6px;
+  background: var(--dsw-alias-bg-layer-2);
+  font-size: 13px;
+  color: var(--dsw-alias-label-primary);
+  cursor: pointer;
+}
+
+.retry:hover {
+  background: var(--dsw-alias-interactive-bg-hover);
+}
+
+.direct {
+  font-size: 13px;
+  color: var(--dsw-alias-brand-primary);
+}
+
+.hint {
+  margin: 0;
+  max-width: 460px;
+  font-size: 12px;
+  line-height: 1.6;
+  color: var(--dsw-alias-label-tertiary);
+}
