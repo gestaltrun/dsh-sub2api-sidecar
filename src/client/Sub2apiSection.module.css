@@ -12,9 +12,17 @@
 
 .frame {
   flex: 1;
-  width: 100%;
+  min-width: 0;
   border: none;
   background: var(--dsw-alias-bg-base);
+}
+
+/* The ready state splits into two columns: the composite-route panel owns a
+ * fixed-width left column, the console iframe takes the rest. */
+.body {
+  flex: 1;
+  display: flex;
+  min-height: 0;
 }
 
 /* The ready-state toolbar is a slim strip above the frame; its fixed 36px

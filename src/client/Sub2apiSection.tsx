@@ -4,9 +4,12 @@
  * readiness poll (the quota snapshot, an existing host-side surface) has not
  * reported a healthy sidecar, the container shows an actionable state —
  * status copy, a retry action, and the loopback direct-console link — instead
- * of a blank frame; once ready, the console fills the section in an iframe.
+ * of a blank frame; once ready, the section splits into two columns: the
+ * host-side composite-route panel on the left, the console iframe on the
+ * right.
  */
 import { useCallback, useEffect, useRef, useState } from 'react'
+import { CompositeRoutesPanel } from './CompositeRoutesPanel.tsx'
 import css from './Sub2apiSection.module.css'
 
 /** The section component's props: the standard locale seat of the slot share. */
@@ -175,7 +178,10 @@ export function Sub2apiSection({ t }: Sub2apiSectionProps) {
           </span>
           <a className={css.openExternal} href={url} target="_blank" rel="noreferrer">{t('openExternal')}</a>
         </div>
-        <iframe className={css.frame} src={url} title={t('nav')} />
+        <div className={css.body}>
+          <CompositeRoutesPanel t={t} />
+          <iframe className={css.frame} src={url} title={t('nav')} />
+        </div>
       </div>
     )
   }

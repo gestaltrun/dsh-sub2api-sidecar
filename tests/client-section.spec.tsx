@@ -16,9 +16,12 @@ import { describeReason, EMBED_ROUTE, EMBED_SRC, formatSnapshotTime, hostTheme, 
 import { en, zh, type SectionKeys } from '../src/client/locales.ts'
 import type { ClientContext } from '@deepseek-ai/dsh-client-runtime/client'
 
-/** The zh translate seat the tests render with. */
-const t = (key: string, params?: Record<string, unknown>): string =>
-  (zh[key as keyof SectionKeys] ?? key).replace(/\{(\w+)\}/g, (_match, name: string) => String(params?.[name] ?? ''))
+/** The zh translate seat the tests render with; without params it returns the raw template, matching the host bind. */
+const t = (key: string, params?: Record<string, unknown>): string => {
+  const raw = zh[key as keyof SectionKeys] ?? key
+  if (params === undefined) return raw
+  return raw.replace(/\{(\w+)\}/g, (_match, name: string) => String(params[name] ?? ''))
+}
 
 /** Record what apply registers, standing in for the client context. */
 function stubContext(): {
@@ -187,8 +190,11 @@ describe('section component', () => {
       expect(open?.getAttribute('target')).toBe('_blank')
       const frame = view.container.querySelector('iframe')
       expect(frame?.getAttribute('src')).toBe(open?.getAttribute('href'))
-      // The toolbar strip sits above the frame inside the same container.
-      expect(open?.parentElement?.nextSibling).toBe(frame)
+      // The toolbar strip sits above the two-column body, which holds the
+      // route panel and the console frame.
+      const body = open?.parentElement?.nextSibling as HTMLElement | null
+      expect(body?.querySelector('iframe')).toBe(frame)
+      expect(body?.querySelector('aside')).not.toBeNull()
     } finally {
       await view.unmount()
     }

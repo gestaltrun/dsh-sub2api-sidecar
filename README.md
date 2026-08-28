@@ -179,6 +179,21 @@ lets the injection plane carry its authentication:
   path-absolute `/api/v1/*` API calls onto the passthrough prefix, which
   `<base href>` cannot do. It contains no key material and grants no
   upstream authorization — admin data flows through the injected key.
+- The shim also carries the embedded console v1.2 account-surface behaviors
+  (`UI_EMBED_MASK_CSS`): one injected `<style>` narrows the embed to the
+  account-management content area — the upstream sidebar (including its
+  bottom 我的账户 group), the drawer toggle, and the topbar user menu are
+  hidden, and the content column's sidebar margin is released. Every
+  selector is structural (`aside.sidebar`, the toggle's `lg:hidden` class,
+  the brand-gradient avatar inside the user-menu trigger), never
+  locale-dependent text, and deep links such as `/admin/groups` get the same
+  masked shell. Meanwhile the fetch/XHR wrappers intercept account
+  create/update (`POST/PUT /api/v1/admin/accounts[…]`) JSON bodies: the
+  form's group picker (`[data-tour="account-form-groups"]`) is masked, so
+  the shim merges the composite group's id into `group_ids` — the id is
+  resolved once through the injected-key admin plane and cached, and XHR
+  sends defer onto that promise (XHR is asynchronous anyway, so callers
+  observe no change).
 - The embedded-session endpoints `GET /api/v1/auth/me` and `POST
   /api/v1/auth/{login,refresh,logout}` arriving under the prefix are answered
   by the passthrough itself with a fabricated display-only admin identity
@@ -246,17 +261,23 @@ the plugin calls are pinned structurally in `src/client/client-seams.d.ts`,
 the browser counterpart of `src/seam.ts`.
 
 The browser half registers one entry — 订阅账号池 — in the settings shell's
-`settings.section` slot. The section owns no business UI:
+`settings.section` slot:
 
 - While the readiness poll reports an unhealthy sidecar, the container shows
   an actionable state instead of a blank frame: status copy derived from the
   snapshot's `reason`, a retry action, and — when the snapshot carries the
   supervised server's port — the 「打开本地管理台直连」 loopback link that
   opens the sidecar's own console (with its native login page) in a new tab.
-- Once the snapshot is `ready`, the console fills the section in an iframe
-  pointed at the same-origin passthrough `/plugins/dsh-sub2api/ui/`; the
-  container keeps polling at a slow cadence so a later sidecar stop flips it
-  back to the fallback card.
+- Once the snapshot is `ready`, the section splits into two columns
+  (console v1.2): the left column is the host-side route-management panel
+  (`src/client/CompositeRoutesPanel.tsx`, data layer
+  `src/client/composite-routes.ts`) — the saved-routes table
+  (edit/delete/refresh), the add/edit route form, and the resolution
+  preview, all over the same-origin injection proxy's composite-routes
+  endpoints; the right column embeds the account-management page in an
+  iframe pointed at the same-origin passthrough
+  `/plugins/dsh-sub2api/ui/`. The container keeps polling at a slow cadence
+  so a later sidecar stop flips it back to the fallback card.
 
 Development adds `pnpm bundle` (tsdown) next to the existing commands; the
 bundle compiles CSS Modules with lightningcss inside the artifact, so no

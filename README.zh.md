@@ -154,6 +154,16 @@ origin 下，注入面才覆盖得到它的鉴权：
   `auth_user`），并把 SPA 的路径绝对 `/api/v1/*` API 调用改写到透传前缀——
   这是 `<base href>` 做不到的。shim 不含任何 key 明文，也不授予任何上游
   鉴权；admin 数据全部经由注入 key 流转。
+- shim 另承担嵌入控制台 v1.2 的两项账号面行为（`UI_EMBED_MASK_CSS`）：注入
+  一条 `<style>` 把嵌入收窄到账号管理内容区——上游侧边栏（含底部「我的
+  账户」分组）、抽屉开关与顶栏用户菜单隐藏，内容列的侧栏留白释放；选择器
+  全部是结构性的（`aside.sidebar`、开关的 `lg:hidden` 类、用户菜单触发器里
+  的品牌渐变头像），不依赖任何语言文案，深链接（如 `/admin/groups`）同样
+  掩蔽壳层。同时 fetch/XHR 包装拦截账号创建/更新
+  （`POST/PUT /api/v1/admin/accounts[…]`）的 JSON body：表单的分组选择器
+  （`[data-tour="account-form-groups"]`）被掩蔽，shim 把 composite 组 id 并入
+  `group_ids`——该 id 经注入 key 的 admin 面解析一次并缓存，XHR 发送挂到该
+  promise 上（XHR 本来异步，调用方无感知）。
 - 到达前缀的 `GET /api/v1/auth/me` 与 `POST /api/v1/auth/{login,refresh,logout}`
   由透传面直接以伪造的仅展示用管理员身份应答（`run_mode: "standard"`，让上游完整的管理面——包括它仅在前端按此字段设防的 composite 分组 UI——保持可达；受监督的网关进程本身仍是 `RUN_MODE=simple`），
   绝不下发 sidecar——嵌入控制台因此永远到不了登录页。上游升级应对：若上游
@@ -209,15 +219,17 @@ origin 下，注入面才覆盖得到它的鉴权：
 peer）。插件调用的 harness client-runtime 面在
 `src/client/client-seams.d.ts` 中结构化钉住，即 `src/seam.ts` 的浏览器对应物。
 
-浏览器半只注册一个条目——订阅账号池——进设置外壳的 `settings.section` 槽。
-该 section 不承载任何业务 UI：
+浏览器半只注册一个条目——订阅账号池——进设置外壳的 `settings.section` 槽：
 
 - 就绪轮询未报告 sidecar 健康时，容器给出可操作状态而非白屏：由快照 `reason`
   派生的状态文案、重试动作，以及（快照携带受监督 server 端口时）「打开本地
   管理台直连」回环链接——在新标签页打开 sidecar 自带控制台（其原生登录页）。
-- 快照变为 `ready` 后，控制台以 iframe 满幅嵌入同源透传
-  `/plugins/dsh-sub2api/ui/`；容器保持低频轮询，sidecar 之后停止时会翻转回
-  回退卡片。
+- 快照变为 `ready` 后，section 呈双栏（控制台 v1.2）：左栏是宿主侧的路由管理
+  面板（`src/client/CompositeRoutesPanel.tsx`，数据层
+  `src/client/composite-routes.ts`）——已保存路由表（编辑/删除/刷新）、
+  添加/编辑路由表单与解析预览，全部经由同源注入代理的 composite-routes
+  端点；右栏以 iframe 嵌入同源透传 `/plugins/dsh-sub2api/ui/` 的账号管理页。
+  容器保持低频轮询，sidecar 之后停止时会翻转回回退卡片。
 
 开发命令在原有基础上增加 `pnpm bundle`（tsdown）；bundle 在产物内用
 lightningcss 编译 CSS Modules，不单独发布样式表。
