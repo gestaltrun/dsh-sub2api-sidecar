@@ -169,7 +169,9 @@ export function Sub2apiSection({ t }: Sub2apiSectionProps) {
       <div className={css.container}>
         <div className={css.toolbar}>
           <span className={css.toolbarMeta}>
-            {t('toolbarSummary', { count: readiness.accountCount, time: formatSnapshotTime(readiness.snapshotAt) })}
+            {t('toolbarSummary')
+              .replace('{count}', String(readiness.accountCount))
+              .replace('{time}', formatSnapshotTime(readiness.snapshotAt))}
           </span>
           <a className={css.openExternal} href={url} target="_blank" rel="noreferrer">{t('openExternal')}</a>
         </div>
