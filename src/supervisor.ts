@@ -22,7 +22,6 @@ import { ensureBootstrap } from './bootstrap.ts'
 import { awaitHealthy } from './health.ts'
 import { prepareLayout, resolveLayout } from './layout.ts'
 import type { Layout } from './layout.ts'
-import type { DesiredProfile } from './llm-profile.ts'
 import { allocatePort, allocatePortPair } from './ports.ts'
 import { initdbOnce, startPostgres, stopPostgres } from './postgres.ts'
 import { startRedis } from './redis.ts'
@@ -35,8 +34,6 @@ import type { SubprocessHandleLike } from './seam.ts'
 interface SupervisorState {
   /** ISO timestamp of the last successful bootstrap. */
   bootstrappedAt?: string
-  /** The llm-pi-ai profile written by the last successful boot. */
-  lastWrittenProfile?: DesiredProfile
 }
 
 /** Dependencies one supervisor instance is built from. */
@@ -246,12 +243,10 @@ export class Supervisor {
       logger,
       config,
       adminPassword,
-      lastWrittenProfile: state.lastWrittenProfile,
       serverPort,
     })
     await writeState(layout.stateFile, {
       bootstrappedAt: new Date().toISOString(),
-      lastWrittenProfile: result.writtenProfile,
     })
     logger.info(
       'dsh-sub2api-sidecar: bootstrap complete (admin key %s, inference key %s)',

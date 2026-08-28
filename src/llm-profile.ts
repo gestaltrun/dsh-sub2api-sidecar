@@ -47,28 +47,48 @@ export function desiredProfile(config: SidecarConfig, serverPort: number): Desir
 }
 
 /**
- * Write the hand-declared route into the `llm-pi-ai` settings namespace when
- * it differs from the last written profile.
+ * Whether every leaf in `desired` deep-equals the same path in `stored`.
+ * Extra keys in `stored` are ignored: the resolved settings section layers
+ * schema defaults over the user patch, so the route may legitimately carry
+ * fields this writer never sets.
+ */
+function desiredIsStored(desired: unknown, stored: unknown): boolean {
+  if (stored === undefined || stored === null) return false
+  if (typeof desired !== 'object' || desired === null || Array.isArray(desired)) {
+    return deepEqualJson(desired, stored)
+  }
+  if (typeof stored !== 'object' || stored === null || Array.isArray(stored)) return false
+  return Object.entries(desired as Record<string, unknown>).every(([key, value]) =>
+    desiredIsStored(value, (stored as Record<string, unknown>)[key]),
+  )
+}
+
+/**
+ * Ensure the hand-declared route is present in the `llm-pi-ai` settings
+ * namespace, judged against the **live resolved store**: the write repeats
+ * whenever the stored route is absent or diverges from the desired profile,
+ * and skips only when the store already contains it. A persisted memo of
+ * previous writes is deliberately not consulted — it cannot know whether the
+ * settings document survived (different DSH_HOME, manual reset), and a stale
+ * memo silently strands the provider route.
  * @param settings - the host settings seam.
  * @param routeName - the provider route key (the dict key under `providers`).
  * @param profile - the desired profile payload.
- * @param lastWritten - the profile written by the previous boot, when known.
  * @param logger - host logger for the skip and write diagnostics.
- * @returns the profile now recorded as written.
  * @throws when the settings seam refuses the write (e.g. llm-pi-ai not mounted).
  */
 export async function writeProfile(
   settings: SettingsService,
   routeName: string,
   profile: DesiredProfile,
-  lastWritten: DesiredProfile | undefined,
   logger: LoggerLike,
-): Promise<DesiredProfile> {
-  if (lastWritten !== undefined && deepEqualJson(lastWritten, profile)) {
-    logger.info('dsh-sub2api-sidecar: llm-pi-ai route "%s" already matches this boot; skipping settings write', routeName)
-    return profile
+): Promise<void> {
+  const section = settings.get(LLM_PI_AI_NAMESPACE) as { providers?: Record<string, unknown> } | undefined
+  const stored = section?.providers?.[routeName]
+  if (desiredIsStored(profile, stored)) {
+    logger.info('dsh-sub2api-sidecar: llm-pi-ai route "%s" already present in settings; skipping write', routeName)
+    return
   }
   await settings.update(LLM_PI_AI_NAMESPACE, { providers: { [routeName]: profile } })
   logger.info('dsh-sub2api-sidecar: wrote llm-pi-ai route "%s" pointing at %s', routeName, profile.baseURL)
-  return profile
 }

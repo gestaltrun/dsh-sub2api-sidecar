@@ -33,8 +33,6 @@ export interface BootstrapIo {
   readonly config: SidecarConfig
   /** Admin password in effect for login. */
   readonly adminPassword: string
-  /** The profile the previous boot wrote, when known. */
-  readonly lastWrittenProfile: DesiredProfile | undefined
   /** Loopback port the server is listening on this boot. */
   readonly serverPort: number
 }
@@ -47,8 +45,6 @@ export interface BootstrapResult {
   readonly reusedInferenceKey: boolean
   /** The composite group id the inference key is bound to; present only when a key was issued this run. */
   readonly groupId: number | undefined
-  /** The llm-pi-ai profile in effect after the run. */
-  readonly writtenProfile: DesiredProfile
 }
 
 /**
@@ -193,11 +189,10 @@ export async function ensureBootstrap(io: BootstrapIo): Promise<BootstrapResult>
     )
   }
 
-  const writtenProfile = await writeProfile(
+  await writeProfile(
     io.settings,
     config.route.name,
     desiredProfile(config, io.serverPort),
-    io.lastWrittenProfile,
     logger,
   )
 
@@ -205,6 +200,5 @@ export async function ensureBootstrap(io: BootstrapIo): Promise<BootstrapResult>
     reusedAdminKey,
     reusedInferenceKey,
     groupId,
-    writtenProfile,
   }
 }

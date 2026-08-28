@@ -68,9 +68,9 @@ describe('supervisor happy path', () => {
     expect(await bootLines(world.stateDir, 'redis-boots.log')).toHaveLength(1)
     expect(await bootLines(world.stateDir, 'initdb-calls.log')).toHaveLength(1)
 
-    // The state file records the written profile and no secret material.
+    // The state file records the bootstrap timestamp and no secret material.
     const state = await readTextOrNull(path.join(world.config.runtimeDir, 'run', 'supervisor-state.json'))
-    expect(state).toContain('lastWrittenProfile')
+    expect(state).toContain('bootstrappedAt')
     expect(state).not.toContain((adminKey ?? '').slice(0, 20))
     expect(state).not.toContain((inferenceKey ?? '').slice(0, 20))
 
