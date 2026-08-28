@@ -14,8 +14,8 @@ import { readStored, storeKey } from './credentials.ts'
 import type { SidecarCredentials } from './credentials.ts'
 import { writeProfile, desiredProfile } from './llm-profile.ts'
 import type { DesiredProfile } from './llm-profile.ts'
-import { Sub2apiApiError, Sub2apiClient } from './client.ts'
-import type { Auth, GroupSummary } from './client.ts'
+import { Sub2apiApiError, Sub2apiClient } from './sub2api-client.ts'
+import type { Auth, GroupSummary } from './sub2api-client.ts'
 import type { SidecarConfig } from './config.ts'
 import type { CredentialsService, LoggerLike, SettingsService } from './seam.ts'
 
@@ -87,6 +87,49 @@ async function ensureCompositeGroup(client: Sub2apiClient, auth: Auth, config: S
 }
 
 /**
+ * Clear the upstream administrator compliance gate when it is armed. The
+ * AUTO_SETUP account is machine-created, so the acknowledgement rides the
+ * boot: the exact phrase upstream issued in its status is echoed back, the
+ * document URL is logged, and `compliance.acceptOnBoot: false` turns the
+ * gate into a loud boot failure naming the document instead.
+ * @param client - the sidecar client.
+ * @param config - the resolved plugin configuration.
+ * @param login - the bootstrap login.
+ * @param logger - host logger.
+ * @throws when the acknowledgement is required, `acceptOnBoot` is false, and
+ * the status cannot be cleared.
+ */
+async function ensureComplianceAcknowledgement(
+  client: Sub2apiClient,
+  config: SidecarConfig,
+  login: () => Promise<Auth>,
+  logger: LoggerLike,
+): Promise<void> {
+  const status = await client.getComplianceStatus(await login())
+  if (!status.required) return
+  if (!config.compliance.acceptOnBoot) {
+    throw new Error(
+      'dsh-sub2api-sidecar: upstream requires the administrator compliance acknowledgement'
+        + ` (version ${status.version}); acknowledge it in the console or set compliance.acceptOnBoot: true.`
+        + ` Document: ${status.documentUrlZh ?? status.documentUrlEn ?? 'unavailable'}`,
+    )
+  }
+  const phrase = status.ackPhraseZh ?? status.ackPhraseEn
+  if (phrase === undefined) {
+    throw new Error(
+      'dsh-sub2api-sidecar: upstream requires the administrator compliance acknowledgement'
+        + ' but reported no acknowledgement phrase; acknowledge it in the console.',
+    )
+  }
+  await client.acceptCompliance(await login(), phrase, status.ackPhraseZh !== undefined ? 'zh' : 'en')
+  logger.info(
+    'dsh-sub2api-sidecar: acknowledged upstream compliance %s on boot (document: %s)',
+    status.version,
+    status.documentUrlZh ?? status.documentUrlEn ?? 'unavailable',
+  )
+}
+
+/**
  * Run the idempotent bootstrap against a healthy sidecar.
  * @param io - client, seams, config, and admin password.
  * @returns what the run reused or issued.
@@ -110,6 +153,10 @@ export async function ensureBootstrap(io: BootstrapIo): Promise<BootstrapResult>
   let reusedAdminKey = true
   if (stored.adminKey === undefined || !(await adminKeyValid(client, stored.adminKey))) {
     reusedAdminKey = false
+    // The compliance gate blocks the reissue itself, and an acknowledged
+    // state persists upstream, so the check rides the reissue path only — a
+    // boot that reuses a valid key performs no auth round trip at all.
+    await ensureComplianceAcknowledgement(client, config, login, logger)
     const adminKey = await client.regenerateAdminApiKey(await login())
     await storeKey(credentials, config.credentials.adminRef, adminKey, logger)
     stored.adminKey = adminKey

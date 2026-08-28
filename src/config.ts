@@ -43,6 +43,11 @@ export interface RawSidecarConfig {
   adminEmail?: string
   /** Admin account password; when absent a random one is generated and kept in `<runDir>/admin-password` (0600). */
   adminPassword?: string
+  /** Upstream administrator compliance acknowledgement handling. */
+  compliance?: {
+    /** Accept the upstream compliance acknowledgement on boot (default true); when false a required acknowledgement fails the boot loudly. */
+    acceptOnBoot?: boolean
+  }
   /** Composite group settings. */
   group?: { name?: string; description?: string }
   /** The single hand-declared provider route written into `llm-pi-ai`. */
@@ -103,6 +108,8 @@ export interface SidecarConfig {
   adminEmail: string
   /** Admin account password; undefined means generate-and-persist under `<runDir>`. */
   adminPassword: string | undefined
+  /** Upstream administrator compliance acknowledgement handling. */
+  compliance: { acceptOnBoot: boolean }
   /** Composite group settings. */
   group: { name: string; description: string }
   /** The single hand-declared provider route. */
@@ -146,6 +153,9 @@ export const DEFAULT_HEALTH_POLL_MS = 500
 
 /** Default SIGTERM→SIGKILL grace per process and pg_ctl stop wait budget. */
 export const DEFAULT_STOP_GRACE_MS = 8_000
+
+/** Default state of the on-boot upstream compliance acknowledgement. */
+export const DEFAULT_COMPLIANCE_ACCEPT_ON_BOOT = true
 
 /** Default composite group name created in sub2api. */
 export const DEFAULT_GROUP_NAME = 'dsh-composite'
@@ -294,6 +304,14 @@ function validateRaw(ctx: ValidateContext, path: ReadonlyArray<PropertyKey>, val
   expectString(ctx, childPath(path, 'adminEmail'), raw['adminEmail'])
   expectString(ctx, childPath(path, 'adminPassword'), raw['adminPassword'])
 
+  const compliance = expectObject(ctx, childPath(path, 'compliance'), raw['compliance'])
+  if (compliance) {
+    const compliancePath = childPath(path, 'compliance')
+    if (compliance['acceptOnBoot'] !== undefined && typeof compliance['acceptOnBoot'] !== 'boolean') {
+      fail(ctx, childPath(compliancePath, 'acceptOnBoot'), 'must be a boolean')
+    }
+  }
+
   const portRange = expectObject(ctx, childPath(path, 'portRange'), raw['portRange'])
   if (portRange) {
     expectPositiveInt(ctx, childPath(childPath(path, 'portRange'), 'min'), portRange['min'], 65_535)
@@ -408,6 +426,9 @@ export function resolveConfig(raw: RawSidecarConfig, env: NodeJS.ProcessEnv): Si
     stopGraceMs: raw.stopGraceMs ?? DEFAULT_STOP_GRACE_MS,
     adminEmail: raw.adminEmail ?? 'admin@sub2api.local',
     adminPassword: raw.adminPassword,
+    compliance: {
+      acceptOnBoot: raw.compliance?.acceptOnBoot ?? DEFAULT_COMPLIANCE_ACCEPT_ON_BOOT,
+    },
     group: {
       name: raw.group?.name ?? DEFAULT_GROUP_NAME,
       description: raw.group?.description ?? 'DeepSeek Harness composite routing group',

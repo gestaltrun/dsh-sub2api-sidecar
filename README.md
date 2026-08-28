@@ -80,7 +80,9 @@ On `apply` it runs one supervised boot:
    `AUTO_SETUP=true`; poll `/health` until it answers within
    `config.healthTimeoutMs`.
 5. Bootstrap (idempotent, reusing stored keys): log in with the AUTO_SETUP
-   admin credentials → regenerate the admin settings API key (`admin-…`) →
+   admin credentials → clear the upstream administrator compliance gate when
+   it is armed (`compliance.acceptOnBoot`, document URL logged) → regenerate
+   the admin settings API key (`admin-…`) →
    find-or-create the `composite` group → create the panel API key bound to
    that group (`sk-…`). Both keys are stored through the credentials seam
    (its local provider keeps them `0600`) and never logged. After issuance the
@@ -108,6 +110,7 @@ Configuration (cordis.yml `config` on the plugin row; every field optional):
 | `healthTimeoutMs` / `healthPollMs` | `120000` / `500` | `/health` budget and probe interval. |
 | `stopGraceMs` | `8000` | SIGTERM→SIGKILL grace and `pg_ctl` stop wait. |
 | `adminEmail` / `adminPassword` | `admin@sub2api.local` / generated | AUTO_SETUP admin account; a generated password is kept in `run/admin-password` (`0600`) for later logins and never logged. |
+| `compliance.acceptOnBoot` | `true` | Acknowledge upstream's administrator compliance commitment on boot (echoing the exact phrase upstream issues, document URL logged). When `false`, a required acknowledgement fails the boot loudly naming the document. |
 | `group.name` / `group.description` | `dsh-composite` | The composite group the bootstrap ensures. |
 | `route.name` / `route.api` / `route.displayName` / `route.models` | `sub2api` / `openai-completions` / `Sub2API (sub2api)` / one Claude model | The hand-declared provider route written into `llm-pi-ai`; set `models` to what your deployment actually serves. |
 | `redis.skip` / `redis.external` | `false` / – | Skip the bundled component (recorded), or point at an external Redis. |
@@ -123,8 +126,9 @@ it is not surfaced to the user, and the product surfaces are the two keys
 
 ## Host-half services
 
-After a healthy boot the plugin mounts two host-side services on the web
-server seam. Both share one admission posture: only loopback peers are
+After a healthy boot the plugin mounts three host-side services on the web
+server seam (the admin injection proxy, the embedded-console passthrough, and
+the quota snapshot). All share one admission posture: only loopback peers are
 admitted, a browser `Origin` header must be the host's own origin or a
 `proxy.allowedOrigins` entry (another loopback port is a different, untrusted
 origin), and an origin-absent request must still carry a loopback `Host`
@@ -149,6 +153,46 @@ never reach the sidecar.
   sidecar surfaces as `502`. It never fabricates a success.
 - HTTP only: WebSocket upgrades are not proxied.
 
+### Embedded-console passthrough
+
+`/plugins/dsh-sub2api/ui/*` maps onto the sidecar's root, where the sidecar
+process serves its own bundled Vue admin console (the SPA plus the `/api/*`
+plane it talks to). Serving the console under the host's own origin is what
+lets the injection plane carry its authentication:
+
+- Upstream paths under `/api/v1/admin/` are forwarded with the injected
+  `x-api-key: <admin-…>` (same key source, same header stripping, same
+  pass-through posture as the admin proxy). Every other path is forwarded
+  verbatim with **no** injected credential — upstream's own unauthenticated
+  and step-up semantics stay authoritative, and no client can reach the admin
+  plane or the gateway with a borrowed key.
+- HTML responses (the SPA's `index.html`, including its own SPA-fallback
+  answers for history-mode routes such as `/admin/dashboard`) are transformed
+  for service under the prefix: path-absolute asset references (`src=`/`href=`
+  and friends) are rebased onto `/plugins/dsh-sub2api/ui/`, and
+  `<base href="/plugins/dsh-sub2api/ui/">` plus the runtime shim are injected
+  right after `<head>`. Non-HTML assets pass through byte-identically.
+- The runtime shim (`src/ui-shim.ts`) is the whole browser-side login bypass
+  (spec v1.1 Q18=2): it seeds upstream's local-storage session keys
+  (`auth_token`, `refresh_token`, `token_expires_at`, `auth_user` with
+  `role: "admin"`) before the SPA boots, and rewrites the SPA's
+  path-absolute `/api/v1/*` API calls onto the passthrough prefix, which
+  `<base href>` cannot do. It contains no key material and grants no
+  upstream authorization — admin data flows through the injected key.
+- The embedded-session endpoints `GET /api/v1/auth/me` and `POST
+  /api/v1/auth/{login,refresh,logout}` arriving under the prefix are answered
+  by the passthrough itself with a fabricated display-only admin identity
+  (`run_mode: "standard"`, so upstream's full management surface — including the composite-groups UI it gates on this field client-side — stays reachable; the supervised gateway process itself stays `RUN_MODE=simple`) and never reach the sidecar: this is what keeps the
+  embedded console off the login page. Upstream upgrade response: if the
+  storage keys or these endpoints change upstream, update `src/ui-shim.ts`
+  and the stub table in `src/ui-proxy.ts` — both are host-side, so no
+  frontend fork is ever needed. Known limits: non-admin (panel) endpoints
+  still hit upstream unauthenticated and fail with its own 401; upstream
+  session cookies are dropped, so cookie-authenticated panel features remain
+  unavailable inside the embed.
+- Admission, refusals, and error codes mirror the admin proxy (`UI_FORBIDDEN`
+  replaces `PROXY_FORBIDDEN`).
+
 ### Quota snapshot
 
 `GET /plugins/dsh-sub2api/quota-snapshot` serves the aggregated read-only
@@ -160,12 +204,16 @@ snapshot (other methods get `405`):
   "reason": "present when unavailable",
   "generatedAt": "ISO time this snapshot was built",
   "lastSuccessAt": "ISO time of the last fully successful poll",
+  "sidecarPort": 45123,
   "accounts": [
     { "id": 1, "name": "...", "platform": "anthropic", "accountType": "oauth",
       "status": "active", "schedulable": true, "quota": { "tier": "..." } }
   ]
 }
 ```
+
+`sidecarPort` carries the supervised server's loopback port while it runs
+this poll; the desktop embed uses it for the direct-console fallback link.
 
 - Polling: every `quotaPollMs` the service reads the sidecar admin API — the
   accounts list plus each account's platform quota endpoint — and atomically
@@ -185,13 +233,43 @@ snapshot (other methods get `405`):
 - The snapshot is a field whitelist: credential-shaped upstream fields cannot
   appear in it, and no key material is ever included.
 
+## Embedded console (browser half)
+
+The package carries a browser face next to the node half, following the
+harness client contract: the `dsh.client` manifest in `package.json`
+(`platform: "web"`, service edges `slots` and `locale`) and a self-contained
+lazy-CJS bundle at `lib/client.js` (`pnpm bundle`), which registers itself
+through `window.__ModuleLoader__.load({ id, factory })` and resolves its only
+externals — `react` and `react/jsx-runtime` — from the loader module table
+(react is an optional peer dependency). The harness client-runtime surfaces
+the plugin calls are pinned structurally in `src/client/client-seams.d.ts`,
+the browser counterpart of `src/seam.ts`.
+
+The browser half registers one entry — 订阅账号池 — in the settings shell's
+`settings.section` slot. The section owns no business UI:
+
+- While the readiness poll reports an unhealthy sidecar, the container shows
+  an actionable state instead of a blank frame: status copy derived from the
+  snapshot's `reason`, a retry action, and — when the snapshot carries the
+  supervised server's port — the 「打开本地管理台直连」 loopback link that
+  opens the sidecar's own console (with its native login page) in a new tab.
+- Once the snapshot is `ready`, the console fills the section in an iframe
+  pointed at the same-origin passthrough `/plugins/dsh-sub2api/ui/`; the
+  container keeps polling at a slow cadence so a later sidecar stop flips it
+  back to the fallback card.
+
+Development adds `pnpm bundle` (tsdown) next to the existing commands; the
+bundle compiles CSS Modules with lightningcss inside the artifact, so no
+separate stylesheet is shipped.
+
 ### Development
 
 ```sh
 pnpm install
-pnpm test        # vitest: lifecycle, convention, redis, config, host services suites
+pnpm test        # vitest: lifecycle, convention, redis, config, host services, client suites
 pnpm typecheck
 pnpm build       # tsc emits lib/ (ESM, Node >= 22)
+pnpm bundle      # tsdown emits lib/client.js (the browser half)
 ```
 
 The tests run a fake sub2api (an `node:http` server implementing the login,

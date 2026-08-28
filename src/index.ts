@@ -16,8 +16,10 @@
  * composite route written into the `llm-pi-ai` settings namespace. After a
  * healthy boot it registers the admin proxy prefix
  * (`/plugins/dsh-sub2api/admin` → sidecar `/api/v1/*` with the injected
- * `x-api-key`) and the quota snapshot route
- * (`/plugins/dsh-sub2api/quota-snapshot`), both admitting only loopback
+ * `x-api-key`), the embedded-console passthrough
+ * (`/plugins/dsh-sub2api/ui/*` → the sidecar's own Vue console under the
+ * host origin), and the quota snapshot route
+ * (`/plugins/dsh-sub2api/quota-snapshot`), all admitting only loopback
  * peers with a trusted origin.
  *
  * Failures fail loud: an unhealthy sidecar never registers a provider, never
@@ -32,6 +34,7 @@ import { resolveConfig } from './config.ts'
 import type { RawSidecarConfig, SidecarConfig } from './config.ts'
 import { QuotaSnapshotService, registerQuotaSnapshotRoute } from './quota-snapshot.ts'
 import { registerAdminProxy } from './proxy.ts'
+import { registerUiProxy } from './ui-proxy.ts'
 import { Supervisor } from './supervisor.ts'
 import type { LoggerLike, Seams, WebServerService } from './seam.ts'
 
@@ -48,6 +51,10 @@ export { Config } from './config.ts'
 export type { RawSidecarConfig, SidecarConfig } from './config.ts'
 export { ADMIN_PROXY_PREFIX, UPSTREAM_ADMIN_PREFIX, registerAdminProxy } from './proxy.ts'
 export type { AdminProxyOptions, SidecarSource } from './proxy.ts'
+export { UI_BASE_PATH, UI_PROXY_PREFIX, mapUiPath, registerUiProxy } from './ui-proxy.ts'
+export type { UiProxyOptions, UiProxyRegistration } from './ui-proxy.ts'
+export { transformUiHtml } from './ui-html.ts'
+export { UI_EMBED_SHIM } from './ui-shim.ts'
 export { QUOTA_SNAPSHOT_PATH, QuotaSnapshotService, registerQuotaSnapshotRoute } from './quota-snapshot.ts'
 export type {
   AccountQuota,
@@ -107,12 +114,12 @@ export async function apply(ctx: PluginContext, config: RawSidecarConfig): Promi
 }
 
 /**
- * Register the injection forwarding plane and the quota snapshot service on
- * the web server seam. Mounting is immediate (the routes answer as soon as
- * apply returns); each piece's disposer goes inside its own effect so an
- * unload removes the routes and stops the poller. The sidecar port and
- * readiness are read from the supervisor instance — the single source of
- * truth for the running chain.
+ * Register the injection forwarding plane, the embedded-console passthrough,
+ * and the quota snapshot service on the web server seam. Mounting is
+ * immediate (the routes answer as soon as apply returns); each piece's
+ * disposer goes inside its own effect so an unload removes the routes and
+ * stops the poller. The sidecar port and readiness are read from the
+ * supervisor instance — the single source of truth for the running chain.
  * @param ctx - the host context.
  * @param config - the resolved configuration.
  * @param supervisor - the acquired supervisor owning the running chain.
@@ -131,6 +138,14 @@ function mountHostServices(ctx: PluginContext, config: SidecarConfig, supervisor
     sidecar,
   })
   ctx.effect(() => () => proxy.dispose())
+  const ui = registerUiProxy({
+    config,
+    webServer: ctx.webServer,
+    credentials: ctx.credentials,
+    logger: ctx.logger,
+    sidecar,
+  })
+  ctx.effect(() => () => ui.dispose())
   const quota = new QuotaSnapshotService({
     config,
     credentials: ctx.credentials,

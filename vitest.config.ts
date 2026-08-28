@@ -2,7 +2,7 @@ import { defineConfig } from 'vitest/config'
 
 export default defineConfig({
   test: {
-    include: ['tests/**/*.spec.ts'],
+    include: ['tests/**/*.spec.ts', 'tests/**/*.spec.tsx'],
     // The supervisor binds real loopback ports and spawns script-backed fakes;
     // serialize the files so port allocation and child-process accounting stay
     // deterministic.

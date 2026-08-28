@@ -70,7 +70,8 @@ CI（`.github/workflows/runtime-pack.yml`）在 push 与 `workflow_dispatch` 时
    可替换内嵌组件。
 4. 以 `RUN_MODE=simple`、`SERVER_HOST=127.0.0.1`、`AUTO_SETUP=true` 启动
    `sub2api`，在 `config.healthTimeoutMs` 内轮询 `/health`。
-5. Bootstrap（幂等，凭据复用）：用 AUTO_SETUP 管理员凭据登录 → regenerate
+5. Bootstrap（幂等，凭据复用）：用 AUTO_SETUP 管理员凭据登录 → 待上游管理员合规
+   门槛生效时先行确认（`compliance.acceptOnBoot`，记录文档 URL）→ regenerate
    admin settings API key（`admin-…`）→ find-or-create `composite` 组 → 创建
    绑定该组的面板 API key（`sk-…`）。两把 key 经 credentials seam 存储（本地
    provider 以 `0600` 保存），绝不写日志。签发后复核约定：`sk-` key 访问 admin
@@ -95,6 +96,7 @@ PostgreSQL。`data/` 永不删除或清空；重载复用既有 key，不重复�
 | `healthTimeoutMs` / `healthPollMs` | `120000` / `500` | `/health` 预算与探测间隔。 |
 | `stopGraceMs` | `8000` | SIGTERM→SIGKILL 宽限与 `pg_ctl` stop 等待。 |
 | `adminEmail` / `adminPassword` | `admin@sub2api.local` / 随机生成 | AUTO_SETUP 管理员账号；生成的密码保存在 `run/admin-password`（`0600`）供后续登录，绝不写日志。 |
+| `compliance.acceptOnBoot` | `true` | 启动时确认上游的管理员合规承诺（原样回传上游下发的确认短语，并记录文档 URL）。设为 `false` 时，未确认的合规门槛会让启动大声失败并指明文档。 |
 | `group.name` / `group.description` | `dsh-composite` | bootstrap 确保的 composite 组。 |
 | `route.name` / `route.api` / `route.displayName` / `route.models` | `sub2api` / `openai-completions` / `Sub2API (sub2api)` / 一个 Claude 模型 | 写入 `llm-pi-ai` 的手声明路由；`models` 请按部署实际服务的模型调整。 |
 | `redis.skip` / `redis.external` | `false` / – | 跳过内嵌组件（留痕），或指向外部 Redis。 |
@@ -109,11 +111,12 @@ key（规格 v1.1，gestaltrun/deepseek-harness-gestalt#346）。
 
 ## Host 半服务
 
-健康启动后，插件在 web server seam 上挂载两个 Host 侧服务。两者共用同一准入
-姿态：仅回环对端可入；浏览器 `Origin` 头必须是宿主自身 origin 或
-`proxy.allowedOrigins` 中的条目（另一个回环端口对浏览器而言是不同且不受信的
-origin）；无 `Origin` 的请求仍必须携带回环 `Host` 头——这正是阻断 DNS
-rebinding 的一道闸。被拒请求得到 `403`，绝不触达 sidecar。
+健康启动后，插件在 web server seam 上挂载三个 Host 侧服务（admin 注入转发面、
+嵌入控制台透传、额度快照）。三者共用同一准入姿态：仅回环对端可入；浏览器
+`Origin` 头必须是宿主自身 origin 或 `proxy.allowedOrigins` 中的条目（另一个
+回环端口对浏览器而言是不同且不受信的 origin）；无 `Origin` 的请求仍必须携带
+回环 `Host` 头——这正是阻断 DNS rebinding 的一道闸。被拒请求得到 `403`，
+绝不触达 sidecar。
 
 ### 注入转发面
 
@@ -130,6 +133,37 @@ rebinding 的一道闸。被拒请求得到 `403`，绝不触达 sidecar。
   `ADMIN_KEY_UNAVAILABLE`）；sidecar 不可达呈现为 `502`。绝不伪造成功。
 - 仅 HTTP：WebSocket upgrade 不在转发范围内。
 
+### 嵌入控制台透传
+
+`/plugins/dsh-sub2api/ui/*` 映射到 sidecar 进程根路径——sidecar 自带的 Vue
+管理台（SPA 及其调用的 `/api/*` 面）就由进程自身提供。让控制台落在宿主自身
+origin 下，注入面才覆盖得到它的鉴权：
+
+- 上游路径位于 `/api/v1/admin/` 之下时，转发统一注入 `x-api-key: <admin-…>`
+  （key 来源、请求头剥离、纯透传姿态与 admin 转发面完全一致）；其余路径原样
+  转发、**不**注入任何凭据——上游自身的匿名与 step-up 语义保持权威，任何调用方
+  都无法借道触碰 admin 面或网关。
+- HTML 响应（SPA 的 `index.html`，含其自身对 history 路由如
+  `/admin/dashboard` 的 SPA 回退）会为前缀服务做改写：路径绝对的资源引用
+  （`src=`/`href=` 等）重定基到 `/plugins/dsh-sub2api/ui/`，并在 `<head>` 后
+  注入 `<base href="/plugins/dsh-sub2api/ui/">` 与运行时 shim。非 HTML 资源
+  逐字节原样透传。
+- 运行时 shim（`src/ui-shim.ts`）就是浏览器侧的全部登录旁路（规格 v1.1
+  Q18=2）：在 SPA 启动前写入上游 auth store 读取的 localStorage 会话键
+  （`auth_token`、`refresh_token`、`token_expires_at`、`role: "admin"` 的
+  `auth_user`），并把 SPA 的路径绝对 `/api/v1/*` API 调用改写到透传前缀——
+  这是 `<base href>` 做不到的。shim 不含任何 key 明文，也不授予任何上游
+  鉴权；admin 数据全部经由注入 key 流转。
+- 到达前缀的 `GET /api/v1/auth/me` 与 `POST /api/v1/auth/{login,refresh,logout}`
+  由透传面直接以伪造的仅展示用管理员身份应答（`run_mode: "standard"`，让上游完整的管理面——包括它仅在前端按此字段设防的 composite 分组 UI——保持可达；受监督的网关进程本身仍是 `RUN_MODE=simple`），
+  绝不下发 sidecar——嵌入控制台因此永远到不了登录页。上游升级应对：若上游
+  更改存储键或这些端点，更新 `src/ui-shim.ts` 与 `src/ui-proxy.ts` 的桩表
+  即可，两者都在宿主侧，永远不需要 fork 前端。已知边界：非 admin（面板）
+  端点仍以未鉴权形态命中上游并按其语义得到 401；上游会话 cookie 被丢弃，
+  依赖 cookie 的面板功能在嵌入内不可用。
+- 准入、拒绝与错误码与 admin 转发面镜像（`PROXY_FORBIDDEN` 对应
+  `UI_FORBIDDEN`）。
+
 ### 额度快照
 
 `GET /plugins/dsh-sub2api/quota-snapshot` 返回聚合后的只读快照（其他方法
@@ -141,12 +175,16 @@ rebinding 的一道闸。被拒请求得到 `403`，绝不触达 sidecar。
   "reason": "不可用时给出原因",
   "generatedAt": "本快照构建时间（ISO）",
   "lastSuccessAt": "最近一次完整成功轮询时间（ISO）",
+  "sidecarPort": 45123,
   "accounts": [
     { "id": 1, "name": "...", "platform": "anthropic", "accountType": "oauth",
       "status": "active", "schedulable": true, "quota": { "tier": "..." } }
   ]
 }
 ```
+
+`sidecarPort` 在本轮轮询时携带受监督 server 的回环端口；桌面嵌入面用它生成
+「本地管理台直连」回退链接。
 
 - 轮询：每 `quotaPollMs` 读取一次 sidecar admin API——accounts 列表加各账号的
   平台 quota 端点——并原子替换已发布快照。
@@ -161,13 +199,37 @@ rebinding 的一道闸。被拒请求得到 `403`，绝不触达 sidecar。
   `accounts` 为空——绝不拿空数据冒充成功。
 - 快照是字段白名单：上游凭证形态的字段不可能进入快照，任何 key 明文都不会出现。
 
+## 嵌入控制台（浏览器半）
+
+本包在 node 半之外还带浏览器面，遵循 harness 客户端契约：`package.json` 的
+`dsh.client` manifest（`platform: "web"`，服务边 `slots` 与 `locale`）与
+`lib/client.js` 的自包含惰性 CJS bundle（`pnpm bundle`）——bundle 通过
+`window.__ModuleLoader__.load({ id, factory })` 注册自身，仅有的两个 external
+`react` 与 `react/jsx-runtime` 从 loader 模块表解析（react 为 optional
+peer）。插件调用的 harness client-runtime 面在
+`src/client/client-seams.d.ts` 中结构化钉住，即 `src/seam.ts` 的浏览器对应物。
+
+浏览器半只注册一个条目——订阅账号池——进设置外壳的 `settings.section` 槽。
+该 section 不承载任何业务 UI：
+
+- 就绪轮询未报告 sidecar 健康时，容器给出可操作状态而非白屏：由快照 `reason`
+  派生的状态文案、重试动作，以及（快照携带受监督 server 端口时）「打开本地
+  管理台直连」回环链接——在新标签页打开 sidecar 自带控制台（其原生登录页）。
+- 快照变为 `ready` 后，控制台以 iframe 满幅嵌入同源透传
+  `/plugins/dsh-sub2api/ui/`；容器保持低频轮询，sidecar 之后停止时会翻转回
+  回退卡片。
+
+开发命令在原有基础上增加 `pnpm bundle`（tsdown）；bundle 在产物内用
+lightningcss 编译 CSS Modules，不单独发布样式表。
+
 ### 开发
 
 ```sh
 pnpm install
-pnpm test        # vitest：生命周期、约定、redis、配置、host 半服务各套测试
+pnpm test        # vitest：生命周期、约定、redis、配置、host 半服务、浏览器半各套测试
 pnpm typecheck
 pnpm build       # tsc 产出 lib/（ESM，Node >= 22）
+pnpm bundle      # tsdown 产出 lib/client.js（浏览器半）
 ```
 
 测试经由真实的进程树 subprocess provider 驱动假 sub2api（`node:http` 实现
