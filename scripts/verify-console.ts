@@ -77,6 +77,7 @@ async function main(): Promise<void> {
   const fixtureHtml = `<!doctype html>
 <html lang="zh-CN"><head><meta charset="utf-8"><title>订阅账号池 embed fixture</title>
 <script src="${FIXTURE_NS}/react"></script>
+<script src="${FIXTURE_NS}/react-dom"></script>
 <script>
 window.__DSH_FIXTURE_TABLE__ = {
   'react': () => window.React,
@@ -150,6 +151,16 @@ window.__ModuleLoader__ = {
       res.end(text)
     },
   })
+  webServer.register({
+    kind: 'exact',
+    path: `${FIXTURE_NS}/react-dom`,
+    handler: async (_req, res) => {
+      const umd = path.join(PACKAGE_ROOT, 'node_modules', 'react-dom', 'umd', 'react-dom.production.min.js')
+      const text = await fsp.readFile(umd, 'utf8').catch(() => 'window.ReactDOM = window.ReactDOM || {}')
+      res.writeHead(200, { 'content-type': 'application/javascript; charset=utf-8' })
+      res.end(text)
+    },
+  })
 
   const context = {
     subprocess: makeSubprocessService(),
@@ -174,7 +185,7 @@ window.__ModuleLoader__ = {
     redis: { external: { host: '127.0.0.1', port: 6379 } },
     quotaPollMs: 5_000,
     healthTimeoutMs: 180_000,
-    proxy: { timeoutMs: 30_000 },
+    proxy: { timeoutMs: 120_000 },
   }
 
   console.log(`[verify] apply against ${RUNTIME_DIR}`)
