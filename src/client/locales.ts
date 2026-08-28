@@ -88,6 +88,71 @@ export type SectionKeys = {
   'routes.submitFailed': string
   'routes.deleteFailed': string
   'routes.modelRequired': string
+  /** Proxy panel heading and the shared-table hint. */
+  'proxies.title': string
+  'proxies.hint': string
+  /** Proxy toolbar: search placeholder, filter labels, actions. */
+  'proxies.search': string
+  'proxies.allProtocols': string
+  'proxies.allStatus': string
+  'proxies.refresh': string
+  'proxies.add': string
+  /** Proxy status labels. */
+  'proxies.statusActive': string
+  'proxies.statusInactive': string
+  'proxies.statusExpired': string
+  /** Proxy table columns. */
+  'proxies.colName': string
+  'proxies.colAddress': string
+  'proxies.colAuth': string
+  'proxies.colLocation': string
+  'proxies.colAccounts': string
+  'proxies.colLatency': string
+  'proxies.colExpiry': string
+  /** Proxy auth cell states. */
+  'proxies.noAuth': string
+  'proxies.revealAuth': string
+  /** Proxy expiry cell when the proxy never expires. */
+  'proxies.noExpiry': string
+  /** Proxy row actions. */
+  'proxies.test': string
+  'proxies.quality': string
+  'proxies.edit': string
+  'proxies.delete': string
+  /** Delete confirmation; `{name}` interpolates the proxy name. */
+  'proxies.deleteConfirm': string
+  /** Proxy form headings and actions. */
+  'proxies.addTitle': string
+  'proxies.editTitle': string
+  'proxies.create': string
+  'proxies.save': string
+  'proxies.cancel': string
+  /** Proxy form field labels. */
+  'proxies.fieldName': string
+  'proxies.fieldProtocol': string
+  'proxies.fieldHost': string
+  'proxies.fieldPort': string
+  'proxies.fieldUsername': string
+  'proxies.fieldPassword': string
+  'proxies.fieldExpiry': string
+  'proxies.fieldFallback': string
+  'proxies.fallbackNone': string
+  'proxies.fallbackDirect': string
+  'proxies.fallbackProxy': string
+  'proxies.fieldBackup': string
+  'proxies.fieldWarnDays': string
+  'proxies.changePassword': string
+  /** Quality result line; `{score}`/`{grade}` interpolate. */
+  'proxies.qualityResult': string
+  /** Proxy failure copies. */
+  'proxies.loadFailed': string
+  'proxies.submitFailed': string
+  'proxies.deleteFailed': string
+  'proxies.required': string
+  'proxies.portInvalid': string
+  /** Proxy list states. */
+  'proxies.empty': string
+  'proxies.noMatch': string
 }
 
 /** Chinese copy (the product's primary language). */
@@ -145,6 +210,58 @@ export const zh: SectionKeys = {
   'routes.submitFailed': '保存失败',
   'routes.deleteFailed': '删除失败',
   'routes.modelRequired': '请填写公开模型',
+  'proxies.title': '代理管理',
+  'proxies.hint': '与账号表单的代理下拉共用同一张表：此处保存后下拉自动出现，无需刷新页面。',
+  'proxies.search': '搜索代理…',
+  'proxies.allProtocols': '全部协议',
+  'proxies.allStatus': '全部状态',
+  'proxies.refresh': '刷新',
+  'proxies.add': '添加代理',
+  'proxies.statusActive': '启用',
+  'proxies.statusInactive': '停用',
+  'proxies.statusExpired': '已过期',
+  'proxies.colName': '名称',
+  'proxies.colAddress': '地址',
+  'proxies.colAuth': '认证',
+  'proxies.colLocation': '地理位置',
+  'proxies.colAccounts': '账号数',
+  'proxies.colLatency': '延迟 / 质量',
+  'proxies.colExpiry': '有效期',
+  'proxies.noAuth': '无',
+  'proxies.revealAuth': '显示/隐藏用户名',
+  'proxies.noExpiry': '永久',
+  'proxies.test': '测试',
+  'proxies.quality': '质检',
+  'proxies.edit': '编辑',
+  'proxies.delete': '删除',
+  'proxies.deleteConfirm': '删除代理「{name}」？',
+  'proxies.addTitle': '添加代理',
+  'proxies.editTitle': '编辑代理',
+  'proxies.create': '创建',
+  'proxies.save': '保存',
+  'proxies.cancel': '取消',
+  'proxies.fieldName': '名称',
+  'proxies.fieldProtocol': '协议',
+  'proxies.fieldHost': '地址',
+  'proxies.fieldPort': '端口',
+  'proxies.fieldUsername': '用户名',
+  'proxies.fieldPassword': '密码',
+  'proxies.fieldExpiry': '有效期',
+  'proxies.fieldFallback': '回退模式',
+  'proxies.fallbackNone': '无',
+  'proxies.fallbackDirect': '直连',
+  'proxies.fallbackProxy': '备用代理',
+  'proxies.fieldBackup': '备用代理',
+  'proxies.fieldWarnDays': '过期提醒（天）',
+  'proxies.changePassword': '修改密码',
+  'proxies.qualityResult': '评分 {score}（{grade}）',
+  'proxies.loadFailed': '代理加载失败',
+  'proxies.submitFailed': '保存失败',
+  'proxies.deleteFailed': '删除失败',
+  'proxies.required': '请填写名称与地址',
+  'proxies.portInvalid': '端口需在 1-65535 之间',
+  'proxies.empty': '暂无代理',
+  'proxies.noMatch': '无匹配代理',
 }
 
 /** English copy. */
@@ -202,4 +319,56 @@ export const en: SectionKeys = {
   'routes.submitFailed': 'Failed to save',
   'routes.deleteFailed': 'Failed to delete',
   'routes.modelRequired': 'Please enter a public model',
+  'proxies.title': 'Proxy Management',
+  'proxies.hint': 'Shares the same table as the account form\'s proxy dropdown: a proxy saved here appears in the dropdown without any page refresh.',
+  'proxies.search': 'Search proxies…',
+  'proxies.allProtocols': 'All protocols',
+  'proxies.allStatus': 'All statuses',
+  'proxies.refresh': 'Refresh',
+  'proxies.add': 'Add Proxy',
+  'proxies.statusActive': 'Active',
+  'proxies.statusInactive': 'Inactive',
+  'proxies.statusExpired': 'Expired',
+  'proxies.colName': 'Name',
+  'proxies.colAddress': 'Address',
+  'proxies.colAuth': 'Auth',
+  'proxies.colLocation': 'Location',
+  'proxies.colAccounts': 'Accounts',
+  'proxies.colLatency': 'Latency / Quality',
+  'proxies.colExpiry': 'Expiry',
+  'proxies.noAuth': 'None',
+  'proxies.revealAuth': 'Show/hide username',
+  'proxies.noExpiry': 'Never',
+  'proxies.test': 'Test',
+  'proxies.quality': 'Quality',
+  'proxies.edit': 'Edit',
+  'proxies.delete': 'Delete',
+  'proxies.deleteConfirm': 'Delete proxy "{name}"?',
+  'proxies.addTitle': 'Add Proxy',
+  'proxies.editTitle': 'Edit Proxy',
+  'proxies.create': 'Create',
+  'proxies.save': 'Save',
+  'proxies.cancel': 'Cancel',
+  'proxies.fieldName': 'Name',
+  'proxies.fieldProtocol': 'Protocol',
+  'proxies.fieldHost': 'Host',
+  'proxies.fieldPort': 'Port',
+  'proxies.fieldUsername': 'Username',
+  'proxies.fieldPassword': 'Password',
+  'proxies.fieldExpiry': 'Expiry',
+  'proxies.fieldFallback': 'Fallback',
+  'proxies.fallbackNone': 'None',
+  'proxies.fallbackDirect': 'Direct',
+  'proxies.fallbackProxy': 'Backup proxy',
+  'proxies.fieldBackup': 'Backup Proxy',
+  'proxies.fieldWarnDays': 'Expiry warning (days)',
+  'proxies.changePassword': 'Change password',
+  'proxies.qualityResult': 'Score {score} ({grade})',
+  'proxies.loadFailed': 'Failed to load proxies',
+  'proxies.submitFailed': 'Failed to save',
+  'proxies.deleteFailed': 'Failed to delete',
+  'proxies.required': 'Please enter a name and a host',
+  'proxies.portInvalid': 'Port must be within 1-65535',
+  'proxies.empty': 'No proxies yet',
+  'proxies.noMatch': 'No matching proxies',
 }

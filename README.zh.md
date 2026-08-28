@@ -224,11 +224,14 @@ peer）。插件调用的 harness client-runtime 面在
 - 就绪轮询未报告 sidecar 健康时，容器给出可操作状态而非白屏：由快照 `reason`
   派生的状态文案、重试动作，以及（快照携带受监督 server 端口时）「打开本地
   管理台直连」回环链接——在新标签页打开 sidecar 自带控制台（其原生登录页）。
-- 快照变为 `ready` 后，section 呈双栏（控制台 v1.2）：左栏是宿主侧的路由管理
-  面板（`src/client/CompositeRoutesPanel.tsx`，数据层
-  `src/client/composite-routes.ts`）——已保存路由表（编辑/删除/刷新）、
-  添加/编辑路由表单与解析预览，全部经由同源注入代理的 composite-routes
-  端点；右栏以 iframe 嵌入同源透传 `/plugins/dsh-sub2api/ui/` 的账号管理页。
+- 快照变为 `ready` 后，section 呈双栏（控制台 v1.2）：左栏是宿主侧的管理
+  面板——路由管理（`src/client/CompositeRoutesPanel.tsx`，数据层
+  `src/client/composite-routes.ts`：已保存路由表、添加/编辑表单、解析预览）
+  与折叠的代理管理卡片（`src/client/ProxyPanel.tsx`，数据层
+  `src/client/proxies.ts`：列表筛选、增删改、测试连接与质量检测；上游账号
+  表单的代理下拉读同一张 proxies 表，此处保存后下拉自动出现，无需刷新
+  iframe；导入/导出属 step-up 流程，不含）。全部经由同源注入代理的对应
+  端点。右栏以 iframe 嵌入同源透传 `/plugins/dsh-sub2api/ui/` 的账号管理页。
   容器保持低频轮询，sidecar 之后停止时会翻转回回退卡片。
 
 开发命令在原有基础上增加 `pnpm bundle`（tsdown）；bundle 在产物内用

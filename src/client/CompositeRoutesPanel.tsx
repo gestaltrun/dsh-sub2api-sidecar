@@ -8,6 +8,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import type { CompositeRoute, Endpoint, MatchType, Platform, RouteDraft, RoutePreview } from './composite-routes.ts'
 import { createRoute, deleteRoute, draftOf, emptyRouteDraft, ENDPOINTS, listRoutes, MATCH_TYPES, PLATFORMS, previewRoute, resolveCompositeGroupId, updateRoute } from './composite-routes.ts'
+import { ProxyPanel } from './ProxyPanel.tsx'
 import css from './CompositeRoutesPanel.module.css'
 
 /** The panel component's props: the standard locale seat of the slot share. */
@@ -291,6 +292,8 @@ export function CompositeRoutesPanel({ t }: CompositeRoutesPanelProps) {
         )}
         {preview.phase === 'failed' && <p className={css.error}>{preview.message}</p>}
       </section>
+
+      <ProxyPanel t={t} />
     </aside>
   )
 }
