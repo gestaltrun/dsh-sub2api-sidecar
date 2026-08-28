@@ -17,7 +17,7 @@ import type { Server } from 'node:http'
 import type { AddressInfo } from 'node:net'
 import { resolveConfig } from '../src/config.ts'
 import { UI_BASE_PATH, UI_PROXY_PREFIX, UI_SHIM_PATH, mapUiPath, registerUiProxy } from '../src/ui-proxy.ts'
-import { UI_EMBED_SHIM } from '../src/ui-shim.ts'
+import { UI_EMBED_MASK_CSS, UI_EMBED_SHIM } from '../src/ui-shim.ts'
 import { FakeCredentials, FakeLogger } from './helpers/world.ts'
 import { FakeWebServer } from './helpers/fake-webserver.ts'
 
@@ -306,6 +306,159 @@ describe('embed shim execution', () => {
     const { storage } = runShim('', { auth_token: 'kept', admin_guide_0_admin_v4_interactive: 'true' })
     expect(storage.get('auth_token')).toBe('kept')
     expect(storage.get('admin_guide_0_admin_v4_interactive')).toBe('true')
+  })
+})
+
+describe('embed shell mask (v1.2 S1/S2)', () => {
+  it('carries every structural mask rule', () => {
+    // The whole upstream sidebar goes, and the content column's sidebar
+    // margin is released through the sidebar's sibling.
+    expect(UI_EMBED_MASK_CSS).toContain('aside.sidebar{display:none!important}')
+    expect(UI_EMBED_MASK_CSS).toContain('.sidebar~div{margin-left:0!important}')
+    // The drawer toggle and the topbar user menu are matched structurally,
+    // never by locale-dependent text.
+    expect(UI_EMBED_MASK_CSS).toContain('header button.lg\\:hidden{display:none!important}')
+    expect(UI_EMBED_MASK_CSS).toContain('header div.relative:has(>button .bg-gradient-to-br){display:none!important}')
+    // The account form's group picker hides behind its build-stable tour key.
+    expect(UI_EMBED_MASK_CSS).toContain('[data-tour="account-form-groups"]{display:none!important}')
+  })
+
+  it('injects the mask as one style tag in the head', () => {
+    const appended: { attrs: Record<string, string>; textContent: string }[] = []
+    const documentDouble = {
+      head: {
+        querySelector: () => null,
+        appendChild: (tag: { attrs: Record<string, string>; textContent: string }) => { appended.push(tag); return tag },
+      },
+      createElement: () => ({
+        attrs: {} as Record<string, string>,
+        setAttribute(name: string, value: string): void { this.attrs[name] = value },
+        textContent: '',
+      }),
+    }
+    /** Minimal constructor double exposing the prototype.open slot the shim patches. */
+    function XhrDouble(this: unknown): void {}
+    XhrDouble.prototype.open = () => {}
+    const sandbox = {
+      window: { localStorage: undefined, addEventListener: () => {}, fetch: undefined },
+      location: { pathname: `${UI_BASE_PATH}admin/groups`, search: '' },
+      history: { replaceState: () => {} },
+      document: documentDouble,
+      XMLHttpRequest: XhrDouble,
+    }
+    vm.runInNewContext(UI_EMBED_SHIM, sandbox)
+    expect(appended).toHaveLength(1)
+    expect(appended[0]?.attrs).toEqual({ 'data-dsh-embed-mask': '' })
+    expect(appended[0]?.textContent).toBe(UI_EMBED_MASK_CSS)
+  })
+})
+
+describe('embed shim composite-group auto-join (v1.2 S2)', () => {
+  const GROUPS = { code: 0, message: 'success', data: { items: [{ id: 2, platform: 'anthropic' }, { id: 8, platform: 'composite' }] } }
+
+  /** Browser doubles with a fetch/XHR plane the shim patches; records what reaches the network. */
+  function runShimWithNet(): {
+    window: { fetch: (input: unknown, init?: unknown) => Promise<unknown> }
+    XMLHttpRequest: new () => { open(...args: unknown[]): void; send(body?: unknown): void }
+    fetchCalls: { url: unknown; init: { method?: string; body?: unknown } | undefined }[]
+    sent: { method: string; rawUrl: string; openedUrl: string; body: unknown }[]
+  } {
+    const fetchCalls: { url: unknown; init: { method?: string; body?: unknown } | undefined }[] = []
+    const sent: { method: string; rawUrl: string; openedUrl: string; body: unknown }[] = []
+    const nativeFetch = (url: unknown, init?: { method?: string; body?: unknown }): Promise<unknown> => {
+      fetchCalls.push({ url, init })
+      const isGroups = typeof url === 'string' && url.includes('/api/v1/admin/groups')
+      return Promise.resolve({ json: () => Promise.resolve(isGroups ? GROUPS : { code: 0, data: {} }) })
+    }
+    const window = { localStorage: undefined, addEventListener: () => {}, fetch: nativeFetch }
+    /** Minimal constructor double; the shim replaces its prototype slots. */
+    function XhrDouble(this: Record<string, unknown>): void {}
+    XhrDouble.prototype.open = function (this: Record<string, unknown>, method: string, url: string): void {
+      this['openedUrl'] = url
+    }
+    XhrDouble.prototype.send = function (this: Record<string, unknown>, body?: unknown): void {
+      sent.push({
+        method: String(this['__dshMethod'] ?? 'GET'),
+        rawUrl: String(this['__dshUrl'] ?? ''),
+        openedUrl: String(this['openedUrl'] ?? ''),
+        body,
+      })
+    }
+    const sandbox = {
+      window,
+      location: { pathname: `${UI_BASE_PATH}admin/accounts`, search: '' },
+      history: { replaceState: () => {} },
+      XMLHttpRequest: XhrDouble,
+    }
+    vm.runInNewContext(UI_EMBED_SHIM, sandbox)
+    return {
+      window: window as { fetch: (input: unknown, init?: unknown) => Promise<unknown> },
+      XMLHttpRequest: XhrDouble as unknown as new () => { open(...args: unknown[]): void; send(body?: unknown): void },
+      fetchCalls,
+      sent,
+    }
+  }
+
+  /** Flush the shim's deferred send/fetch continuations. */
+  async function flush(): Promise<void> {
+    await new Promise((resolve) => { setTimeout(resolve, 0) })
+  }
+
+  it('merges the composite group id into an account create body with an empty selection', async () => {
+    const { XMLHttpRequest, sent } = runShimWithNet()
+    const xhr = new XMLHttpRequest()
+    xhr.open('POST', '/api/v1/admin/accounts')
+    xhr.send(JSON.stringify({ name: 'probe', group_ids: [] }))
+    await flush()
+    expect(sent).toHaveLength(1)
+    expect(sent[0]?.openedUrl).toBe(`${UI_BASE_PATH}api/v1/admin/accounts`)
+    expect(JSON.parse(String(sent[0]?.body))).toMatchObject({ name: 'probe', group_ids: [8] })
+  })
+
+  it('merges the composite id into an update body that names other groups', async () => {
+    const { XMLHttpRequest, sent } = runShimWithNet()
+    const xhr = new XMLHttpRequest()
+    xhr.open('PUT', '/api/v1/admin/accounts/12')
+    xhr.send(JSON.stringify({ name: 'probe', group_ids: [3] }))
+    await flush()
+    expect(JSON.parse(String(sent[0]?.body))).toMatchObject({ group_ids: [3, 8] })
+  })
+
+  it('leaves a body that already carries the composite id untouched in effect', async () => {
+    const { XMLHttpRequest, sent } = runShimWithNet()
+    const xhr = new XMLHttpRequest()
+    xhr.open('POST', '/api/v1/admin/accounts')
+    xhr.send(JSON.stringify({ name: 'probe', group_ids: [8] }))
+    await flush()
+    expect(JSON.parse(String(sent[0]?.body))).toMatchObject({ group_ids: [8] })
+  })
+
+  it('never touches non-mutating or non-account requests', async () => {
+    const { XMLHttpRequest, sent } = runShimWithNet()
+    const other = new XMLHttpRequest()
+    other.open('POST', '/api/v1/admin/groups')
+    other.send(JSON.stringify({ name: 'x' }))
+    const reader = new XMLHttpRequest()
+    reader.open('GET', '/api/v1/admin/accounts')
+    reader.send()
+    await flush()
+    expect(sent).toHaveLength(2)
+    expect(JSON.parse(String(sent[0]?.body))).toEqual({ name: 'x' })
+    expect(sent[1]?.body).toBeUndefined()
+  })
+
+  it('injects the group id through the fetch wrapper as well', async () => {
+    const { window, fetchCalls } = runShimWithNet()
+    await window.fetch('/api/v1/admin/accounts', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ name: 'probe' }),
+    })
+    const create = fetchCalls.find((call) => call.init?.method === 'POST')
+    expect(create?.url).toBe(`${UI_BASE_PATH}api/v1/admin/accounts`)
+    expect(JSON.parse(String(create?.init?.body))).toMatchObject({ name: 'probe', group_ids: [8] })
+    // The composite id lookup itself went through the injected-key admin plane.
+    expect(fetchCalls.some((call) => String(call.url).includes('/api/v1/admin/groups'))).toBe(true)
   })
 })
 
