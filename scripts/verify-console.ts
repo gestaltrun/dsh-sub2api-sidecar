@@ -166,8 +166,25 @@ window.__ModuleLoader__ = {
     subprocess: makeSubprocessService(),
     credentials,
     settings: {
-      async update(namespace: string, patch: object): Promise<void> {
+      // Faithful in-memory double of the file-backed settings service:
+      // updates persist into the section map so a later get() observes them,
+      // exactly like the real provider across restarts of the same home.
+      sections: {} as Record<string, Record<string, unknown>>,
+      async update(this: { sections: Record<string, Record<string, unknown>> }, namespace: string, patch: object): Promise<void> {
         console.log(`[verify] settings.update(${namespace})`)
+        const current = (this.sections[namespace] ?? {}) as Record<string, unknown>
+        const merged: Record<string, unknown> = { ...current }
+        for (const [key, value] of Object.entries(patch)) {
+          if (key === 'providers' && typeof value === 'object' && value !== null) {
+            merged[key] = { ...((current[key] ?? {}) as Record<string, unknown>), ...(value as Record<string, unknown>) }
+          } else {
+            merged[key] = value
+          }
+        }
+        this.sections[namespace] = merged
+      },
+      get(namespace: string): unknown {
+        return (this as { sections: Record<string, Record<string, unknown>> }).sections[namespace]
       },
     },
     logger: {
