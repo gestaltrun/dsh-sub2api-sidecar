@@ -12,12 +12,13 @@ import { act } from 'react'
 import { createRoot } from 'react-dom/client'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { apply, inject } from '../src/client/index.ts'
-import { describeReason, EMBED_ROUTE, EMBED_SRC, readReadiness, Sub2apiSection } from '../src/client/Sub2apiSection.tsx'
+import { describeReason, EMBED_ROUTE, EMBED_SRC, formatSnapshotTime, hostTheme, readReadiness, Sub2apiSection } from '../src/client/Sub2apiSection.tsx'
 import { en, zh, type SectionKeys } from '../src/client/locales.ts'
 import type { ClientContext } from '@deepseek-ai/dsh-client-runtime/client'
 
 /** The zh translate seat the tests render with. */
-const t = (key: string): string => zh[key as keyof SectionKeys] ?? key
+const t = (key: string, params?: Record<string, unknown>): string =>
+  (zh[key as keyof SectionKeys] ?? key).replace(/\{(\w+)\}/g, (_match, name: string) => String(params?.[name] ?? ''))
 
 /** Record what apply registers, standing in for the client context. */
 function stubContext(): {
@@ -94,10 +95,12 @@ describe('registration', () => {
 })
 
 describe('readiness derivation', () => {
-  it('maps a ready snapshot to the ready phase', async () => {
+  it('maps a ready snapshot to the ready phase with the toolbar data', async () => {
     const fetchImpl = vi.fn(async () =>
-      Response.json({ status: 'ready', accounts: [1] }))
-    expect(await readReadiness(fetchImpl as unknown as typeof fetch)).toEqual({ phase: 'ready' })
+      Response.json({ status: 'ready', generatedAt: '2026-08-28T03:04:05.000Z', accounts: [1, 2, 3] }))
+    expect(await readReadiness(fetchImpl as unknown as typeof fetch)).toEqual({
+      phase: 'ready', accountCount: 3, snapshotAt: '2026-08-28T03:04:05.000Z',
+    })
   })
 
   it('carries the unavailability reason and the sidecar port', async () => {
@@ -163,11 +166,54 @@ describe('section component', () => {
     const view = await renderSection()
     try {
       const frame = view.container.querySelector('iframe')
-      expect(frame?.getAttribute('src')).toBe(EMBED_SRC + EMBED_ROUTE)
+      expect(frame?.getAttribute('src')).toBe(`${EMBED_SRC}${EMBED_ROUTE}?theme=${hostTheme()}`)
       expect(frame?.getAttribute('title')).toBe('订阅账号池')
-      expect(view.container.querySelector('a')).toBeNull()
     } finally {
       await view.unmount()
+    }
+  })
+
+  it('renders the slim toolbar with the account count, snapshot time, and the new-window action', async () => {
+    vi.stubGlobal('fetch', vi.fn(async () =>
+      Response.json({ status: 'ready', generatedAt: '2026-08-28T11:46:17.347Z', accounts: [{}, {}] })))
+    const view = await renderSection()
+    try {
+      const summary = view.container.querySelector('span')
+      expect(summary?.textContent).toBe(`共 2 个账号 · 快照 ${formatSnapshotTime('2026-08-28T11:46:17.347Z')}`)
+      expect(formatSnapshotTime('2026-08-28T11:46:17.347Z')).toMatch(/^\d{2}:\d{2}$/)
+      const open = view.container.querySelector('a')
+      expect(open?.textContent).toBe('在新窗口打开')
+      expect(open?.getAttribute('href')).toBe(`${EMBED_SRC}${EMBED_ROUTE}?theme=${hostTheme()}`)
+      expect(open?.getAttribute('target')).toBe('_blank')
+      const frame = view.container.querySelector('iframe')
+      expect(frame?.getAttribute('src')).toBe(open?.getAttribute('href'))
+      // The toolbar strip sits above the frame inside the same container.
+      expect(open?.parentElement?.nextSibling).toBe(frame)
+    } finally {
+      await view.unmount()
+    }
+  })
+
+  it('passes the host color scheme through to the embed URL', async () => {
+    expect(hostTheme()).toBe('light') // jsdom has no matchMedia; the fallback is light
+    window.matchMedia = ((query: string) => ({
+      matches: query === '(prefers-color-scheme: dark)',
+      media: query,
+      addEventListener: () => {},
+      removeEventListener: () => {},
+    })) as unknown as typeof window.matchMedia
+    try {
+      expect(hostTheme()).toBe('dark')
+      vi.stubGlobal('fetch', vi.fn(async () =>
+        Response.json({ status: 'ready', accounts: [] })))
+      const view = await renderSection()
+      try {
+        expect(view.container.querySelector('iframe')?.getAttribute('src')).toBe(`${EMBED_SRC}${EMBED_ROUTE}?theme=dark`)
+      } finally {
+        await view.unmount()
+      }
+    } finally {
+      delete (window as { matchMedia?: unknown }).matchMedia
     }
   })
 

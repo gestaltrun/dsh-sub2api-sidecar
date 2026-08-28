@@ -38,7 +38,7 @@ export const SETTLED_POLL_MS = 30_000
 /** The container's readiness, derived from the snapshot surface. */
 export type EmbedReadiness =
   | { readonly phase: 'checking' }
-  | { readonly phase: 'ready' }
+  | { readonly phase: 'ready'; readonly accountCount: number; readonly snapshotAt: string | undefined }
   | { readonly phase: 'unavailable'; readonly reason: string; readonly sidecarPort: number | undefined }
 
 /** The subset of the snapshot payload the container reads. */
@@ -46,6 +46,8 @@ interface SnapshotView {
   readonly status: string
   readonly reason?: string
   readonly sidecarPort?: number
+  readonly generatedAt?: string
+  readonly accounts?: readonly unknown[]
 }
 
 /**
@@ -62,7 +64,13 @@ export async function readReadiness(fetchImpl: typeof fetch = fetch): Promise<Em
   } catch {
     return { phase: 'unavailable', reason: 'unreachable', sidecarPort: undefined }
   }
-  if (payload?.status === 'ready') return { phase: 'ready' }
+  if (payload?.status === 'ready') {
+    return {
+      phase: 'ready',
+      accountCount: Array.isArray(payload.accounts) ? payload.accounts.length : 0,
+      snapshotAt: typeof payload.generatedAt === 'string' ? payload.generatedAt : undefined,
+    }
+  }
   return {
     phase: 'unavailable',
     reason: payload?.reason ?? 'no-poll-yet',
@@ -86,8 +94,45 @@ export function describeReason(reason: string, t: (key: string) => string): stri
 }
 
 /**
- * Render the section content: the full-bleed console embed, or the
- * actionable fallback card while the sidecar is not ready.
+ * The host's current color scheme. The host shell follows the OS setting
+ * through its alias tokens, so `prefers-color-scheme` is the authoritative
+ * signal; light is the fallback when matchMedia is unavailable.
+ * @returns 'dark' or 'light'.
+ */
+export function hostTheme(): 'light' | 'dark' {
+  try {
+    return window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light'
+  } catch {
+    return 'light'
+  }
+}
+
+/**
+ * The console embed URL for the current host theme. The `theme` query is
+ * consumed by the passthrough shim, which writes upstream's theme storage
+ * before the upstream app boots.
+ * @returns the host-relative iframe URL.
+ */
+export function embedUrl(): string {
+  return `${EMBED_SRC}${EMBED_ROUTE}?theme=${hostTheme()}`
+}
+
+/**
+ * Format the snapshot's generation time as HH:mm for the toolbar.
+ * @param iso - the snapshot's `generatedAt`.
+ * @returns the local HH:mm, or an empty string for a missing/invalid time.
+ */
+export function formatSnapshotTime(iso: string | undefined): string {
+  if (iso === undefined) return ''
+  const date = new Date(iso)
+  if (Number.isNaN(date.getTime())) return ''
+  const pad = (value: number): string => String(value).padStart(2, '0')
+  return `${pad(date.getHours())}:${pad(date.getMinutes())}`
+}
+
+/**
+ * Render the section content: the slim toolbar plus the console embed, or
+ * the actionable fallback card while the sidecar is not ready.
  * @param props - the section props (locale seat).
  * @returns the section element tree.
  */
@@ -119,9 +164,16 @@ export function Sub2apiSection({ t }: Sub2apiSectionProps) {
   }, [poll])
 
   if (readiness.phase === 'ready') {
+    const url = embedUrl()
     return (
       <div className={css.container}>
-        <iframe className={css.frame} src={`${EMBED_SRC}${EMBED_ROUTE}`} title={t('nav')} />
+        <div className={css.toolbar}>
+          <span className={css.toolbarMeta}>
+            {t('toolbarSummary', { count: readiness.accountCount, time: formatSnapshotTime(readiness.snapshotAt) })}
+          </span>
+          <a className={css.openExternal} href={url} target="_blank" rel="noreferrer">{t('openExternal')}</a>
+        </div>
+        <iframe className={css.frame} src={url} title={t('nav')} />
       </div>
     )
   }

@@ -10,6 +10,7 @@
 import fs from 'node:fs/promises'
 import os from 'node:os'
 import path from 'node:path'
+import vm from 'node:vm'
 import { afterAll, describe, expect, it } from 'vitest'
 import { createServer } from 'node:http'
 import type { Server } from 'node:http'
@@ -216,6 +217,14 @@ describe('html transform', () => {
     expect(sidecar.requests.at(-1)).toBeUndefined()
   })
 
+  it('serves the ?theme= history-mode route as transformed html', { timeout: 15_000 }, async () => {
+    const { webServer, sidecar } = await useFixture()
+    const response = await get(`${webServer.origin}${UI_BASE_PATH}admin/accounts?theme=light`)
+    expect(response.status).toBe(200)
+    expect(await response.text()).toContain('<base href=')
+    expect(sidecar.requests.at(-1)?.path).toBe('/admin/accounts?theme=light')
+  })
+
   it('serves the bare prefix without a trailing slash as the SPA root', { timeout: 15_000 }, async () => {
     const { webServer, sidecar } = await useFixture()
     const response = await get(`${webServer.origin}${UI_PROXY_PREFIX}`)
@@ -238,6 +247,65 @@ describe('html transform', () => {
     const response = await fetch(`${webServer.origin}${UI_BASE_PATH}`, { method: 'HEAD' })
     expect(response.status).toBe(200)
     expect(await response.text()).toBe('')
+  })
+})
+
+describe('embed shim execution', () => {
+  /** Browser doubles the shim touches, recording storage writes and the history rewrite. */
+  function runShim(search: string, seed?: Record<string, string>): {
+    storage: Map<string, string>
+    replacedUrl: string | undefined
+  } {
+    const storage = new Map<string, string>(Object.entries(seed ?? {}))
+    const state: { replacedUrl: string | undefined } = { replacedUrl: undefined }
+    const localStorage = {
+      getItem: (key: string) => storage.get(key) ?? null,
+      setItem: (key: string, value: string) => { storage.set(key, value) },
+      removeItem: (key: string) => { storage.delete(key) },
+    }
+    const window = {
+      localStorage,
+      addEventListener: () => {},
+      fetch: undefined,
+    }
+    /** Minimal constructor double exposing the prototype.open slot the shim patches. */
+    function XMLHttpRequest(): void {}
+    XMLHttpRequest.prototype.open = () => {}
+    const sandbox = {
+      window,
+      location: { pathname: `${UI_BASE_PATH}admin/accounts`, search },
+      history: {
+        replaceState: (_state: unknown, _title: unknown, url: string) => { state.replacedUrl = url },
+      },
+      XMLHttpRequest,
+    }
+    vm.runInNewContext(UI_EMBED_SHIM, sandbox)
+    return { storage, replacedUrl: state.replacedUrl }
+  }
+
+  it('seeds the embedded session and the upstream onboarding seen flag', () => {
+    const { storage, replacedUrl } = runShim('')
+    expect(storage.get('auth_token')).toBe('dsh-embedded-session')
+    expect(JSON.parse(storage.get('auth_user') ?? '{}')).toMatchObject({ id: 0, role: 'admin' })
+    // Upstream derives the flag as `${storageKey}_${userId}_${role}_v4_interactive`.
+    expect(storage.get('admin_guide_0_admin_v4_interactive')).toBe('true')
+    expect(storage.get('theme')).toBeUndefined()
+    expect(replacedUrl).toBe('/admin/accounts')
+  })
+
+  it('writes the host theme from ?theme= into upstream theme storage before the rewrite', () => {
+    expect(runShim('?theme=light').storage.get('theme')).toBe('light')
+    expect(runShim('?theme=dark').storage.get('theme')).toBe('dark')
+    const { storage, replacedUrl } = runShim('?theme=light')
+    expect(replacedUrl).toBe('/admin/accounts?theme=light')
+    // Unknown values never reach the storage.
+    expect(runShim('?theme=blue').storage.get('theme')).toBeUndefined()
+  })
+
+  it('keeps an existing session and still pins the onboarding flag', () => {
+    const { storage } = runShim('', { auth_token: 'kept', admin_guide_0_admin_v4_interactive: 'true' })
+    expect(storage.get('auth_token')).toBe('kept')
+    expect(storage.get('admin_guide_0_admin_v4_interactive')).toBe('true')
   })
 })
 
