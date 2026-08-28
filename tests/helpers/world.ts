@@ -38,9 +38,30 @@ export class FakeCredentials implements CredentialsService {
 /** Recording settings service double. */
 export class FakeSettings implements SettingsService {
   readonly updates: Array<{ namespace: string; patch: Record<string, unknown> }> = []
+  /** Pre-seeded resolved sections served by {@link get}, keyed by namespace. */
+  readonly sections: Record<string, unknown> = {}
 
   async update(namespace: string, patch: object): Promise<void> {
     this.updates.push({ namespace, patch: patch as Record<string, unknown> })
+    // Simulate the real service's persistence so a later get() observes the
+    // committed user layer: top-level keys merge, `providers` merges per key.
+    const current = (this.sections[namespace] ?? {}) as Record<string, unknown>
+    const merged: Record<string, unknown> = { ...current }
+    for (const [key, value] of Object.entries(patch as Record<string, unknown>)) {
+      if (key === 'providers' && typeof value === 'object' && value !== null) {
+        merged[key] = {
+          ...((current[key] ?? {}) as Record<string, unknown>),
+          ...(value as Record<string, unknown>),
+        }
+      } else {
+        merged[key] = value
+      }
+    }
+    this.sections[namespace] = merged
+  }
+
+  get(namespace: string): unknown {
+    return this.sections[namespace]
   }
 }
 

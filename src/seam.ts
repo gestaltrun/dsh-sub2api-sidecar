@@ -140,6 +140,13 @@ export interface SettingsService {
    * @param patch - plain-object patch over the user section.
    */
   update(namespace: string, patch: object): Promise<void>
+  /**
+   * Read one registered namespace's resolved value (schema defaults, then the
+   * registrant's composition `base`, then the user layer).
+   * @param namespace - registered settings namespace.
+   * @returns the resolved section, or `undefined` while the namespace is unregistered.
+   */
+  get(namespace: string): unknown
 }
 
 /** Route match kind: `exact` matches the pathname verbatim; `prefix` matches the pathname and anything below it. */
