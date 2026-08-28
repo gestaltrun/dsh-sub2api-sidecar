@@ -56,6 +56,8 @@ describe('supervisor happy path', () => {
     expect(profile?.['apiKeyEnv']).toBe('SUB2API_API_KEY')
     expect(profile?.['baseURL']).toMatch(/^http:\/\/127\.0\.0\.1:\d+\/v1$/)
     expect(Array.isArray(profile?.['models'])).toBe(true)
+    // The derived catalog carries the composite routes' public models.
+    expect(profile?.['models']).toContainEqual(expect.objectContaining({ id: 'v12-probe' }))
 
     // The baseURL names the port the fake actually listens on: a request to it
     // through the issued sk- key succeeds.

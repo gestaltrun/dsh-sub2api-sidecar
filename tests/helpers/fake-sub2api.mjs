@@ -55,7 +55,7 @@ function loadState() {
   try {
     return JSON.parse(fs.readFileSync(statePath, 'utf8'))
   } catch {
-    return { adminKey: null, jwt: null, groups: [], keys: [], regenerateCount: 0, loginCount: 0, accounts: [], quotaRoutes: {}, complianceAck: null }
+    return { adminKey: null, jwt: null, groups: [], keys: [], regenerateCount: 0, loginCount: 0, accounts: [], quotaRoutes: {}, complianceAck: null, compositeRoutes: [{ id: 1, public_model: 'v12-probe', match_type: 'exact', endpoint: 'any', target_platform: 'kimi', priority: 100, enabled: true }] }
   }
 }
 function saveState(state) {
@@ -185,6 +185,10 @@ const server = http.createServer((req, res) => {
     }
     if (req.method === 'GET' && state.quotaRoutes && state.quotaRoutes[path] !== undefined) {
       ok(res, state.quotaRoutes[path])
+      return
+    }
+    if (req.method === 'GET' && /^\/api\/v1\/admin\/groups\/\d+\/composite-routes$/.test(path)) {
+      ok(res, { items: state.compositeRoutes ?? [] })
       return
     }
     if (path === '/api/v1/admin/groups' && req.method === 'POST') {

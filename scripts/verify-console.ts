@@ -75,7 +75,7 @@ async function main(): Promise<void> {
   // doubles, so the built client bundle runs its real apply and the section
   // component renders against the real host routes.
   const fixtureHtml = `<!doctype html>
-<html lang="zh-CN"><head><meta charset="utf-8"><title>订阅账号池 embed fixture</title>
+<html lang="zh-CN"><head><meta charset="utf-8"><title>订阅转 API embed fixture</title>
 <script src="${FIXTURE_NS}/react"></script>
 <script src="${FIXTURE_NS}/react-dom"></script>
 <script>

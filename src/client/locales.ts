@@ -92,7 +92,7 @@ export type SectionKeys = {
 
 /** Chinese copy (the product's primary language). */
 export const zh: SectionKeys = {
-  'nav': '订阅账号池',
+  'nav': '订阅转 API',
   'checking': '正在检查 sidecar 状态…',
   'unreadyTitle': 'sidecar 未就绪',
   'reason.sidecar-not-ready': 'sidecar 进程未运行，等待监督器拉起。',
@@ -149,7 +149,7 @@ export const zh: SectionKeys = {
 
 /** English copy. */
 export const en: SectionKeys = {
-  'nav': 'Subscription Account Pool',
+  'nav': 'Subscribe-to-API',
   'checking': 'Checking sidecar status…',
   'unreadyTitle': 'sidecar is not ready',
   'reason.sidecar-not-ready': 'The sidecar process is not running; waiting for the supervisor.',

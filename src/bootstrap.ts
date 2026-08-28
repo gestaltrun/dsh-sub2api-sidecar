@@ -181,6 +181,30 @@ export async function ensureBootstrap(io: BootstrapIo): Promise<BootstrapResult>
   // Auth-convention check: the sk- key must never open the admin plane. The
   // upstream middleware accepts only the settings-stored admin- key here, so
   // anything but 401 means the deployment's auth split is broken.
+  // Derived model catalog sync runs on every boot, authenticated by the
+  // stored admin- key (no extra login round trips on reuse boots). It
+  // tracks the composite routes configured on the group.
+  let derivedModels: Array<{ id: string; name: string }> = []
+  try {
+    if (stored.adminKey !== undefined) {
+      const adminAuth = { kind: 'adminKey', key: stored.adminKey } as const
+      const compositeGroup = (await client.listGroups(adminAuth, 'composite'))
+        .find((entry) => entry.name === config.group.name)
+      if (compositeGroup !== undefined) {
+        const routes = await client.listCompositeRoutes(adminAuth, compositeGroup.id)
+        derivedModels = routes
+          .map((route) => ({ id: route.public_model, name: route.public_model }))
+          .filter((model, index, all) => all.findIndex((entry) => entry.id === model.id) === index)
+          .filter((model) => !config.route.models.some((entry) => entry.id === model.id))
+        if (derivedModels.length > 0) {
+          logger.info('dsh-sub2api-sidecar: derived %d model(s) from composite routes', String(derivedModels.length))
+        }
+      }
+    }
+  } catch {
+    logger.warn('dsh-sub2api-sidecar: composite route sync failed; using the configured catalog only')
+  }
+
   const adminStatus = await client.adminEndpointStatus(stored.inferenceKey)
   if (adminStatus !== 401) {
     throw new Error(
@@ -192,7 +216,7 @@ export async function ensureBootstrap(io: BootstrapIo): Promise<BootstrapResult>
   await writeProfile(
     io.settings,
     config.route.name,
-    desiredProfile(config, io.serverPort),
+    desiredProfile(config, io.serverPort, derivedModels),
     logger,
   )
 

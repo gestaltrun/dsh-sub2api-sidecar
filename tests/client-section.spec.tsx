@@ -86,14 +86,14 @@ describe('registration', () => {
     apply(ctx)
     expect(inject).toEqual(['slots', 'locale'])
     expect(injected).toEqual(['settings.section'])
-    expect(dictionaries['dsh-sub2api-sidecar']?.zh?.nav).toBe('订阅账号池')
-    expect(dictionaries['dsh-sub2api-sidecar']?.en?.nav).toBe('Subscription Account Pool')
+    expect(dictionaries['dsh-sub2api-sidecar']?.zh?.nav).toBe('订阅转 API')
+    expect(dictionaries['dsh-sub2api-sidecar']?.en?.nav).toBe('Subscribe-to-API')
     expect(state.registration?.options['name']).toBe('settings.section')
     expect(state.registration?.options['id']).toBe('sub2api')
     expect(state.registration?.options['order']).toBe(20)
     expect(state.registration?.options['locale']).toBe('dsh-sub2api-sidecar')
     const label = state.registration?.options['label'] as () => string
-    expect(label()).toBe('订阅账号池')
+    expect(label()).toBe('订阅转 API')
   })
 })
 
@@ -170,7 +170,7 @@ describe('section component', () => {
     try {
       const frame = view.container.querySelector('iframe')
       expect(frame?.getAttribute('src')).toBe(`${EMBED_SRC}${EMBED_ROUTE}?theme=${hostTheme()}`)
-      expect(frame?.getAttribute('title')).toBe('订阅账号池')
+      expect(frame?.getAttribute('title')).toBe('订阅转 API')
     } finally {
       await view.unmount()
     }
