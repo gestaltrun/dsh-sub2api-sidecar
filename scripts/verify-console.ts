@@ -119,8 +119,10 @@ window.__ModuleLoader__ = {
   mod.apply(ctx)
   const section = contributions.find((c) => c.options.id === 'sub2api')
   window.__DSH_FIXTURE__ = { contributions, section, mod }
+  const translate = ctx.locale.bind('dsh-sub2api-sidecar')
+  const t = (k, params) => translate(k).replace(/\{(\w+)\}/g, (_m, name) => String((params || {})[name] ?? ''))
   const root = window.ReactDOM.createRoot(document.getElementById('root'))
-  root.render(window.React.createElement(section.component, { t: (k) => k }))
+  root.render(window.React.createElement(section.component, { t }))
 })()
 </script>
 </body></html>`

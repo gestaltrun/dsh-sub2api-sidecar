@@ -17,6 +17,38 @@
   background: var(--dsw-alias-bg-base);
 }
 
+/* The ready-state toolbar is a slim strip above the frame; its fixed 36px
+ * height comes out of the container's column flow, never the frame's flex. */
+.toolbar {
+  flex: 0 0 36px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 0 12px;
+  border-bottom: 1px solid var(--dsw-alias-border-l2);
+  background: var(--dsw-alias-bg-layer-1);
+}
+
+.toolbarMeta {
+  font-size: 12px;
+  color: var(--dsw-alias-label-secondary);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.openExternal {
+  flex: 0 0 auto;
+  font-size: 12px;
+  color: var(--dsw-alias-brand-primary);
+  text-decoration: none;
+}
+
+.openExternal:hover {
+  text-decoration: underline;
+}
+
 .fallback {
   align-items: center;
   justify-content: center;

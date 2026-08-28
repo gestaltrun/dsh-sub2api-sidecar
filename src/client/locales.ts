@@ -26,6 +26,10 @@ export type SectionKeys = {
   'directLink': string
   /** Hint explaining what the direct console is and where its password lives. */
   'directHint': string
+  /** Ready-state toolbar summary: account count plus snapshot time. */
+  'toolbarSummary': string
+  /** Ready-state toolbar action opening the console in a new window. */
+  'openExternal': string
 }
 
 /** Chinese copy (the product's primary language). */
@@ -41,6 +45,8 @@ export const zh: SectionKeys = {
   'retry': '重试',
   'directLink': '打开本地管理台直连',
   'directHint': '直连将打开 sidecar 自带管理台的登录页；管理员密码存于 ~/.dsh/sub2api/run/admin-password。',
+  'toolbarSummary': '共 {count} 个账号 · 快照 {time}',
+  'openExternal': '在新窗口打开',
 }
 
 /** English copy. */
@@ -56,4 +62,6 @@ export const en: SectionKeys = {
   'retry': 'Retry',
   'directLink': 'Open the local console directly',
   'directHint': 'The direct link opens the sidecar console with its own login page; the admin password is kept in ~/.dsh/sub2api/run/admin-password.',
+  'toolbarSummary': '{count} accounts · snapshot {time}',
+  'openExternal': 'Open in new window',
 }

@@ -28,6 +28,17 @@ const UI_PREFIX = '/plugins/dsh-sub2api/ui'
 export const UI_EMBED_SHIM = `(function () {
   var PREFIX = ${JSON.stringify(UI_PREFIX)}
   var SESSION_TOKEN = 'dsh-embedded-session'
+  // The host section passes its current theme as ?theme=light|dark on the
+  // iframe URL. Read it before the history rewrite below, and write
+  // upstream's theme storage (localStorage 'theme' = 'light'|'dark', read by
+  // upstream's initThemeClass before the app mounts) so the embedded console
+  // follows the host theme instead of the OS default.
+  var themeMatch = /[?&]theme=(light|dark)(?=&|$)/.exec(location.search)
+  try {
+    if (themeMatch && window.localStorage) {
+      window.localStorage.setItem('theme', themeMatch[1])
+    }
+  } catch (_) {}
   // The upstream router is built with the absolute base '/' (baked at its
   // build time), so it must observe an unprefixed pathname. Rewrite the
   // history entry to the inner path before any module script runs; dynamic
@@ -49,6 +60,15 @@ export const UI_EMBED_SHIM = `(function () {
       window.localStorage.setItem('auth_user', JSON.stringify({
         id: 0, username: 'dsh-embedded', role: 'admin', status: 'active',
       }))
+    }
+    // Suppress upstream's 21-step welcome tour inside the embed: the tour
+    // auto-starts unless its seen flag is set. Upstream derives the flag key
+    // in useOnboardingTour as storageKey + '_' + userId + '_' + role +
+    // '_v4_interactive' with storageKey 'admin_guide' for admins; the
+    // embedded identity seeded above is id 0 / role admin, so the key is
+    // deterministic.
+    if (window.localStorage.getItem('admin_guide_0_admin_v4_interactive') !== 'true') {
+      window.localStorage.setItem('admin_guide_0_admin_v4_interactive', 'true')
     }
   } catch (_) {}
   // Rebase path-absolute element URLs: the upstream preload helper resolves
