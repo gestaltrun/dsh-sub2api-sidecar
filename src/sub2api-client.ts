@@ -237,6 +237,33 @@ export class Sub2apiClient {
   }
 
   /**
+   * List the composite routes configured on one group. Fails soft: an
+   * unknown endpoint resolves to an empty list, because the derived model
+   * catalog is best-effort enrichment over the configured one.
+   * @param auth - admin JWT or admin key.
+   * @param groupId - the composite group id.
+   * @returns the sanitized route entries.
+   */
+  async listCompositeRoutes(auth: Auth, groupId: number): Promise<Array<{ public_model: string; target_platform: string }>> {
+    try {
+      const data = await this.request<unknown>('GET', `/api/v1/admin/groups/${String(groupId)}/composite-routes`, auth, undefined)
+      const list = Array.isArray(data)
+        ? data
+        : typeof data === 'object' && data !== null && Array.isArray((data as Record<string, unknown>)['items'])
+          ? (data as Record<string, unknown>)['items'] as unknown[]
+          : []
+      return list.flatMap((entry) => {
+        if (typeof entry !== 'object' || entry === null) return []
+        const record = entry as Record<string, unknown>
+        if (typeof record['public_model'] !== 'string' || record['public_model'].length === 0) return []
+        return [{ public_model: record['public_model'], target_platform: typeof record['target_platform'] === 'string' ? record['target_platform'] : '' }]
+      })
+    } catch {
+      return []
+    }
+  }
+
+  /**
    * Create a group.
    * @param auth - admin JWT or admin key.
    * @param input - name, description, platform, and rate multiplier.

@@ -27,7 +27,7 @@ export interface DesiredProfile {
   /** The sidecar's loopback `/v1` endpoint. */
   readonly baseURL: string
   /** The advertised model list. */
-  readonly models: ReadonlyArray<{ id: string; name: string; contextWindow: number; maxTokens: number }>
+  readonly models: ReadonlyArray<{ id: string; name: string; contextWindow?: number; maxTokens?: number }>
 }
 
 /**
@@ -36,13 +36,22 @@ export interface DesiredProfile {
  * @param serverPort - the sidecar server port allocated this boot.
  * @returns the profile payload for the route key.
  */
-export function desiredProfile(config: SidecarConfig, serverPort: number): DesiredProfile {
+export function desiredProfile(
+  config: SidecarConfig,
+  serverPort: number,
+  derivedModels: ReadonlyArray<{ id: string; name: string }> = [],
+): DesiredProfile {
+  const configured = config.route.models.map((model) => ({ ...model }))
+  const known = new Set(configured.map((model) => model.id))
+  const derived = derivedModels
+    .filter((model) => !known.has(model.id))
+    .map((model) => ({ id: model.id, name: model.name }))
   return {
     apiKeyEnv: config.credentials.inferenceRef,
     displayName: config.route.displayName,
     api: config.route.api,
     baseURL: `http://127.0.0.1:${serverPort}/v1`,
-    models: config.route.models,
+    models: [...configured, ...derived],
   }
 }
 
