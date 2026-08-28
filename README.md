@@ -269,13 +269,17 @@ The browser half registers one entry — 订阅账号池 — in the settings she
   supervised server's port — the 「打开本地管理台直连」 loopback link that
   opens the sidecar's own console (with its native login page) in a new tab.
 - Once the snapshot is `ready`, the section splits into two columns
-  (console v1.2): the left column is the host-side route-management panel
-  (`src/client/CompositeRoutesPanel.tsx`, data layer
-  `src/client/composite-routes.ts`) — the saved-routes table
-  (edit/delete/refresh), the add/edit route form, and the resolution
-  preview, all over the same-origin injection proxy's composite-routes
-  endpoints; the right column embeds the account-management page in an
-  iframe pointed at the same-origin passthrough
+  (console v1.2): the left column is the host-side management panel — route
+  management (`src/client/CompositeRoutesPanel.tsx`, data layer
+  `src/client/composite-routes.ts`: saved-routes table, add/edit form,
+  resolution preview) plus the collapsible proxy card
+  (`src/client/ProxyPanel.tsx`, data layer `src/client/proxies.ts`: filtered
+  list, CRUD, connection test and quality check; upstream's account form
+  reads the same proxies table for its 代理 dropdown, so a proxy saved here
+  appears there without refreshing the iframe; import/export stay excluded
+  as step-up flows). All calls ride the same-origin injection proxy's
+  corresponding endpoints. The right column embeds the account-management
+  page in an iframe pointed at the same-origin passthrough
   `/plugins/dsh-sub2api/ui/`. The container keeps polling at a slow cadence
   so a later sidecar stop flips it back to the fallback card.
 
