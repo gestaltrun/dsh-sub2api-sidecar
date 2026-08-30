@@ -75,7 +75,9 @@ On `apply` it runs one supervised boot:
 3. Start the pack's `redis-server`. The darwin pack ships a loud placeholder
    (see `pack-sources.lock.json`), so the boot fails naming the lock entry
    unless `config.redis.skip` (recorded in `run/redis.skipped.json`) or
-   `config.redis.external` replaces the bundled component.
+   `config.redis.external` replaces the bundled component. The published bundle
+   layer sets `redis.skip: true` so one-click Desktop installation boots with
+   the published darwin pack; deployments with Redis can override that row.
 4. Start `sub2api` with `RUN_MODE=simple`, `SERVER_HOST=127.0.0.1`, and
    `AUTO_SETUP=true`; poll `/health` until it answers within
    `config.healthTimeoutMs`.
@@ -113,7 +115,7 @@ Configuration (cordis.yml `config` on the plugin row; every field optional):
 | `compliance.acceptOnBoot` | `true` | Acknowledge upstream's administrator compliance commitment on boot (echoing the exact phrase upstream issues, document URL logged). When `false`, a required acknowledgement fails the boot loudly naming the document. |
 | `group.name` / `group.description` | `dsh-composite` | The composite group the bootstrap ensures. |
 | `route.name` / `route.api` / `route.displayName` / `route.models` | `sub2api` / `openai-completions` / `Sub2API (sub2api)` / one Claude model | The hand-declared provider route written into `llm-pi-ai`; set `models` to what your deployment actually serves. |
-| `redis.skip` / `redis.external` | `false` / – | Skip the bundled component (recorded), or point at an external Redis. |
+| `redis.skip` / `redis.external` | `false` / – | Function-plugin defaults. The published bundle layer sets `skip: true` for the darwin placeholder; deployments can override it or point at external Redis. |
 | `credentials.adminRef` / `credentials.inferenceRef` | `SUB2API_ADMIN_API_KEY` / `SUB2API_API_KEY` | Credential references for the two keys. |
 | `proxy.enabled` | `true` | Mount the admin injection proxy prefix and the quota snapshot route. |
 | `proxy.allowedOrigins` | `[]` | Extra absolute origins trusted by both host-side routes besides the host's own. |
