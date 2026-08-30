@@ -81,9 +81,10 @@ CI（`.github/workflows/runtime-pack.yml`）在 push 与 `workflow_dispatch` 时
    凭据引用）。
 6. 健康检查失败时全部不注册：不写 key、不写 llm-pi-ai，错误显式指名原因。
 
-dispose（fiber 卸载、Cordis HMR 重载、宿主退出）对 sub2api 与 redis 进程树执行
-SIGTERM → 宽限 → SIGKILL，并用 `pg_ctl stop`（先 fast，后 immediate）关闭
-PostgreSQL。`data/` 永不删除或清空；重载复用既有 key，不重复正确的步骤，也不会
+dispose（fiber 卸载、Cordis HMR 重载、宿主退出）会并行启动 `pg_ctl stop`（先
+fast，后 immediate）关闭 PostgreSQL，并对 sub2api 与 redis 进程树执行 SIGTERM
+→ 宽限 → SIGKILL，因此 daemonized 数据库不会排在任一宽限窗口之后。`data/`
+永不删除或清空；重载复用既有 key，不重复正确的步骤，也不会
 在同一 runtime dir 下拉起第二套进程。
 
 配置（cordis.yml 插件行的 `config`；所有字段可选）：

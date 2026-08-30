@@ -133,6 +133,18 @@ describe('health failure refusal', () => {
 })
 
 describe('dispose semantics', () => {
+  it('starts PostgreSQL shutdown before a managed process finishes its grace', { timeout: 40_000 }, async () => {
+    const { world, ctx } = useWorld(await createWorld({ shutdownDelayMs: 1_000 }))
+    await apply(ctx, world.rawConfig)
+
+    const stopping = Promise.resolve(world.effects[0]?.()())
+    await expect.poll(async () => await readTextOrNull(path.join(world.stateDir, 'pgctl-calls.log')), {
+      timeout: 500,
+    }).toContain('stop')
+    expect(await readTextOrNull(path.join(world.stateDir, 'sub2api-stopped'))).toBeNull()
+    await stopping
+  })
+
   it('stops the process trees and preserves the data directory', { timeout: 40_000 }, async () => {
     const { world, ctx } = useWorld(await createWorld())
     await apply(ctx, world.rawConfig)

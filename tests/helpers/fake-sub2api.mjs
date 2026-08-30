@@ -217,9 +217,14 @@ const server = http.createServer((req, res) => {
 
 server.listen(Number(process.env.SERVER_PORT), '127.0.0.1')
 process.on('SIGTERM', () => {
-  fs.writeFileSync(shutdownMarker, `${process.pid}\n`)
-  server.close(() => process.exit(0))
-  // A server with keep-alive sockets may not close promptly; the marker is
-  // already on disk, so exit unconditionally after a short grace.
-  setTimeout(() => process.exit(0), 500).unref()
+  const stop = () => {
+    fs.writeFileSync(shutdownMarker, `${process.pid}\n`)
+    server.close(() => process.exit(0))
+    // A server with keep-alive sockets may not close promptly; the marker is
+    // already on disk, so exit unconditionally after a short grace.
+    setTimeout(() => process.exit(0), 500).unref()
+  }
+  const delay = Number(process.env.FAKE_SHUTDOWN_DELAY_MS ?? 0)
+  if (delay > 0) setTimeout(stop, delay)
+  else stop()
 })
