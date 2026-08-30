@@ -81,6 +81,7 @@ export class Supervisor {
   private serverPort: number | undefined
   private serverHandle: SubprocessHandleLike | undefined
   private redis: RedisOutcome | undefined
+  private postgresStarted = false
 
   private constructor(options: SupervisorOptions) {
     this.config = options.config
@@ -187,6 +188,7 @@ export class Supervisor {
       socketDir: layout.runDir,
       graceMs: config.stopGraceMs,
     }, postgresPort, abort.signal)
+    this.postgresStarted = true
     logger.info('dsh-sub2api-sidecar: postgres listening on 127.0.0.1:%d', postgresPort)
 
     this.redis = await startRedis(
@@ -256,8 +258,9 @@ export class Supervisor {
   }
 
   /**
-   * Stop the chain: terminate the managed trees, then shut postgres down
-   * through `pg_ctl stop`. Idempotent; safe on a partially started chain.
+   * Stop the chain: synchronously submit `pg_ctl stop`, then await it in
+   * parallel with managed-tree termination. Idempotent and safe when boot
+   * stopped before PostgreSQL started.
    * The data directory is preserved.
    */
   private async dispose(): Promise<void> {
@@ -270,23 +273,22 @@ export class Supervisor {
       handle.terminate()
       await handle.waitForExit()
     }))
-    const stopDatabase = fs.access(layout.pgDataDir).then(
-      async () => {
-        const mode = await stopPostgres(seams.subprocess, {
+    const stopDatabase = this.postgresStarted
+      ? stopPostgres(seams.subprocess, {
           initdbPath: layout.bin.initdb,
           pgCtlPath: layout.bin.pgCtl,
           pgDataDir: layout.pgDataDir,
           logPath: layout.postgresLog,
           socketDir: layout.runDir,
           graceMs: this.config.stopGraceMs,
+        }).then((mode) => {
+          logger.info('dsh-sub2api-sidecar: postgres stopped (%s shutdown); data preserved at %s', mode, layout.dataDir)
         })
-        logger.info('dsh-sub2api-sidecar: postgres stopped (%s shutdown); data preserved at %s', mode, layout.dataDir)
-      },
-      () => {},
-    )
+      : Promise.resolve()
     await Promise.all([stopManaged, stopDatabase])
     this.serverHandle = undefined
     this.redis = undefined
+    this.postgresStarted = false
     this.startPromise = undefined
     logger.info('dsh-sub2api-sidecar: sidecar chain stopped')
   }
