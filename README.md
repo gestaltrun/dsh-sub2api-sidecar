@@ -95,9 +95,10 @@ On `apply` it runs one supervised boot:
 6. On health failure none of this registers: no key is written, no settings
    write happens, and the boot error names the cause.
 
-Disposal (fiber unload, Cordis HMR reload, or host shutdown) terminates the
-sub2api and redis process trees (SIGTERM → grace → SIGKILL) and shuts
-PostgreSQL down through `pg_ctl stop` (fast, then immediate). `data/` is never
+Disposal (fiber unload, Cordis HMR reload, or host shutdown) starts PostgreSQL
+shutdown through `pg_ctl stop` (fast, then immediate) in parallel with the
+sub2api and redis process-tree termination (SIGTERM → grace → SIGKILL), so the
+daemonized database does not wait behind either grace window. `data/` is never
 deleted or emptied; a reload reuses the running keys, re-runs nothing that is
 already correct, and never starts a second process set behind one runtime dir.
 

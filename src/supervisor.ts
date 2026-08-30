@@ -266,24 +266,28 @@ export class Supervisor {
     const logger = seams.logger
     const handles = [this.serverHandle, this.redis?.kind === 'managed' ? this.redis.handle : undefined]
       .filter((handle): handle is SubprocessHandleLike => handle !== undefined)
-    await Promise.all(handles.map(async (handle) => {
+    const stopManaged = Promise.all(handles.map(async (handle) => {
       handle.terminate()
       await handle.waitForExit()
     }))
+    const stopDatabase = fs.access(layout.pgDataDir).then(
+      async () => {
+        const mode = await stopPostgres(seams.subprocess, {
+          initdbPath: layout.bin.initdb,
+          pgCtlPath: layout.bin.pgCtl,
+          pgDataDir: layout.pgDataDir,
+          logPath: layout.postgresLog,
+          socketDir: layout.runDir,
+          graceMs: this.config.stopGraceMs,
+        })
+        logger.info('dsh-sub2api-sidecar: postgres stopped (%s shutdown); data preserved at %s', mode, layout.dataDir)
+      },
+      () => {},
+    )
+    await Promise.all([stopManaged, stopDatabase])
     this.serverHandle = undefined
     this.redis = undefined
     this.startPromise = undefined
-    if (await fs.access(layout.pgDataDir).then(() => true, () => false)) {
-      const mode = await stopPostgres(seams.subprocess, {
-        initdbPath: layout.bin.initdb,
-        pgCtlPath: layout.bin.pgCtl,
-        pgDataDir: layout.pgDataDir,
-        logPath: layout.postgresLog,
-        socketDir: layout.runDir,
-        graceMs: this.config.stopGraceMs,
-      })
-      logger.info('dsh-sub2api-sidecar: postgres stopped (%s shutdown); data preserved at %s', mode, layout.dataDir)
-    }
     logger.info('dsh-sub2api-sidecar: sidecar chain stopped')
   }
 }

@@ -119,6 +119,8 @@ export interface WorldOptions {
   initdbFails?: boolean
   /** Make the fake sub2api health endpoint fail. */
   healthFails?: boolean
+  /** Delay the fake sub2api SIGTERM handler before it records shutdown. */
+  shutdownDelayMs?: number
   /** Arm the fake upstream's administrator compliance gate (423 until acknowledged). */
   complianceRequired?: boolean
   /** Config overrides layered onto the defaults. */
@@ -170,6 +172,9 @@ export async function createWorld(options: WorldOptions = {}): Promise<World> {
     // ADMIN_*) is merged on top by the child process itself.
     `FAKE_STATE_DIR='${stateDir}' \\`,
     ...(options.healthFails === true ? ["FAKE_HEALTH='fail' \\"] : []),
+    ...(options.shutdownDelayMs === undefined
+      ? []
+      : [`FAKE_SHUTDOWN_DELAY_MS='${String(options.shutdownDelayMs)}' \\`]),
     `FAKE_ADMIN_EMAIL='${config.adminEmail}' \\`,
     `FAKE_ADMIN_PASSWORD='${config.adminPassword}' \\`,
     ...(options.complianceRequired === true ? ["FAKE_COMPLIANCE='required' \\"] : []),
