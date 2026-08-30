@@ -1,6 +1,6 @@
 /**
  * Fixture builder: assemble a fake runtime pack (bin/sub2api wrapper, initdb,
- * pg_ctl, optional real-behaving or stub redis-server), a fake context
+ * foreground postgres, optional real-behaving or stub redis-server), a fake context
  * (in-memory credentials + settings + recording logger), and the resolved
  * config the tests run with.
  *
@@ -200,38 +200,12 @@ echo 17 > "$pgdata/PG_VERSION"
 exit 0
 `, { mode: 0o755 })
 
-  await fs.writeFile(path.join(binDir, 'pg_ctl'), `#!/bin/sh
-cmd=""
-pgdata=""
-prev=""
-for arg in "$@"; do
-  case "$arg" in
-    -l|-o|-D|-m) prev="$arg"; continue ;;
-    start|stop|status|reload|restart) cmd="$arg" ;;
-  esac
-  if [ "$prev" = "-D" ]; then pgdata="$arg"; fi
-  prev=""
-done
-echo "$cmd $*" >> '${stateDir}/pgctl-calls.log'
-case "$cmd" in
-  start)
-    echo "$$" > "$pgdata/postmaster.pid"
-    exit 0
-    ;;
-  stop)
-    rm -f "$pgdata/postmaster.pid"
-    exit 0
-    ;;
-  status)
-    test -f "$pgdata/postmaster.pid" && exit 0
-    echo "pg_ctl: no server running" >&2
-    exit 3
-    ;;
-  *)
-    exit 0
-    ;;
-esac
-`, { mode: 0o755 })
+  await fs.writeFile(path.join(binDir, 'postgres'), [
+    '#!/bin/sh',
+    `FAKE_STATE_DIR='${stateDir}' \\`,
+    `exec '${node}' '${path.join(helpersDir, 'fake-postgres.mjs')}' "$@"`,
+    '',
+  ].join('\n'), { mode: 0o755 })
 
   if (options.omitRedis !== true) {
     if (options.redisStub === true) {

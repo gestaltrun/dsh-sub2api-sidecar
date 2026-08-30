@@ -30,7 +30,7 @@ async function isPortFree(port: number): Promise<boolean> {
  * @returns the allocated ports, in scan order.
  * @throws when the range does not contain enough free ports.
  */
-async function allocate(count: number, range: { min: number; max: number }): Promise<number[]> {
+export async function allocatePorts(count: number, range: { min: number; max: number }): Promise<number[]> {
   const picked: number[] = []
   for (let port = range.min; port <= range.max && picked.length < count; port++) {
     if (await isPortFree(port)) picked.push(port)
@@ -42,24 +42,4 @@ async function allocate(count: number, range: { min: number; max: number }): Pro
     )
   }
   return picked
-}
-
-/**
- * Allocate one free loopback port from the scan range.
- * @param range - inclusive scan bounds.
- * @returns the allocated port.
- */
-export async function allocatePort(range: { min: number; max: number }): Promise<number> {
-  const [port] = await allocate(1, range)
-  return port as number
-}
-
-/**
- * Allocate two distinct free loopback ports (postgres and the sub2api server).
- * @param range - inclusive scan bounds.
- * @returns `[postgresPort, serverPort]`.
- */
-export async function allocatePortPair(range: { min: number; max: number }): Promise<[number, number]> {
-  const [first, second] = await allocate(2, range)
-  return [first as number, second as number]
 }

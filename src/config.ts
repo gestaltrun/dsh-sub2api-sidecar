@@ -37,7 +37,7 @@ export interface RawSidecarConfig {
   healthTimeoutMs?: number
   /** Interval between health probes. */
   healthPollMs?: number
-  /** Per-process SIGTERM→SIGKILL grace and the pg_ctl stop wait budget. */
+  /** Per-process SIGTERM→SIGKILL grace. */
   stopGraceMs?: number
   /** AUTO_SETUP admin account email; upstream default `admin@sub2api.local`. */
   adminEmail?: string
@@ -102,7 +102,7 @@ export interface SidecarConfig {
   healthTimeoutMs: number
   /** Interval between health probes. */
   healthPollMs: number
-  /** Per-process SIGTERM→SIGKILL grace and pg_ctl stop wait budget. */
+  /** Per-process SIGTERM→SIGKILL grace. */
   stopGraceMs: number
   /** AUTO_SETUP admin account email. */
   adminEmail: string
@@ -151,7 +151,7 @@ export const DEFAULT_HEALTH_TIMEOUT_MS = 120_000
 /** Default interval between health probes. */
 export const DEFAULT_HEALTH_POLL_MS = 500
 
-/** Default SIGTERM→SIGKILL grace per process and pg_ctl stop wait budget. */
+/** Default SIGTERM→SIGKILL grace per process. */
 export const DEFAULT_STOP_GRACE_MS = 8_000
 
 /** Default state of the on-boot upstream compliance acknowledgement. */

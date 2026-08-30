@@ -6,8 +6,8 @@
  * reload cannot start a second process set behind one runtime dir, and the
  * chain stops only when the last owner releases.
  *
- * `dispose` terminates the managed trees (sub2api, redis) and shuts postgres
- * down through `pg_ctl stop`. Neither `data/` nor the runtime pack is ever
+ * `dispose` terminates the managed trees (sub2api, redis, postgres). Neither
+ * `data/` nor the runtime pack is ever
  * deleted or emptied by this package.
  *
  * @module dsh-sub2api-sidecar/supervisor
@@ -22,8 +22,8 @@ import { ensureBootstrap } from './bootstrap.ts'
 import { awaitHealthy } from './health.ts'
 import { prepareLayout, resolveLayout } from './layout.ts'
 import type { Layout } from './layout.ts'
-import { allocatePort, allocatePortPair } from './ports.ts'
-import { initdbOnce, startPostgres, stopPostgres } from './postgres.ts'
+import { allocatePorts } from './ports.ts'
+import { initdbOnce, startPostgres } from './postgres.ts'
 import { startRedis } from './redis.ts'
 import type { RedisOutcome, RedisRequest } from './redis.ts'
 import type { Seams } from './seam.ts'
@@ -81,7 +81,7 @@ export class Supervisor {
   private serverPort: number | undefined
   private serverHandle: SubprocessHandleLike | undefined
   private redis: RedisOutcome | undefined
-  private postgresStarted = false
+  private postgresHandle: SubprocessHandleLike | undefined
 
   private constructor(options: SupervisorOptions) {
     this.config = options.config
@@ -163,8 +163,13 @@ export class Supervisor {
     await prepareLayout(layout)
 
     const needsLocalRedis = config.redis.external === undefined && !config.redis.skip
-    const [postgresPort, serverPort] = await allocatePortPair(config.portRange)
-    const redisPort = needsLocalRedis ? await allocatePort(config.portRange) : undefined
+    const allocatedPorts = await allocatePorts(
+      needsLocalRedis ? 3 : 2,
+      config.portRange,
+    )
+    const postgresPort = allocatedPorts[0] as number
+    const serverPort = allocatedPorts[1] as number
+    const redisPort = allocatedPorts[2]
     const redisRequest: RedisRequest = config.redis.external !== undefined
       ? { plan: 'external', host: config.redis.external.host, port: config.redis.external.port }
       : config.redis.skip
@@ -174,21 +179,18 @@ export class Supervisor {
 
     await initdbOnce(seams.subprocess, {
       initdbPath: layout.bin.initdb,
-      pgCtlPath: layout.bin.pgCtl,
       pgDataDir: layout.pgDataDir,
-      logPath: layout.postgresLog,
       socketDir: layout.runDir,
       graceMs: config.stopGraceMs,
     }, abort.signal)
-    await startPostgres(seams.subprocess, {
-      initdbPath: layout.bin.initdb,
-      pgCtlPath: layout.bin.pgCtl,
+    this.postgresHandle = await startPostgres(seams.subprocess, {
+      postgresPath: layout.bin.postgres,
       pgDataDir: layout.pgDataDir,
       logPath: layout.postgresLog,
       socketDir: layout.runDir,
       graceMs: config.stopGraceMs,
+      startupTimeoutMs: config.healthTimeoutMs,
     }, postgresPort, abort.signal)
-    this.postgresStarted = true
     logger.info('dsh-sub2api-sidecar: postgres listening on 127.0.0.1:%d', postgresPort)
 
     this.redis = await startRedis(
@@ -258,37 +260,30 @@ export class Supervisor {
   }
 
   /**
-   * Stop the chain: synchronously submit `pg_ctl stop`, then await it in
-   * parallel with managed-tree termination. Idempotent and safe when boot
-   * stopped before PostgreSQL started.
+   * Stop every managed tree in parallel and await quiescence. Idempotent and
+   * safe when boot stopped before one of the processes started.
    * The data directory is preserved.
    */
   private async dispose(): Promise<void> {
     this.abort.abort()
     const { seams, layout } = this
     const logger = seams.logger
-    const handles = [this.serverHandle, this.redis?.kind === 'managed' ? this.redis.handle : undefined]
+    const handles = [
+      this.serverHandle,
+      this.redis?.kind === 'managed' ? this.redis.handle : undefined,
+      this.postgresHandle,
+    ]
       .filter((handle): handle is SubprocessHandleLike => handle !== undefined)
-    const stopManaged = Promise.all(handles.map(async (handle) => {
+    await Promise.all(handles.map(async (handle) => {
       handle.terminate()
       await handle.waitForExit()
     }))
-    const stopDatabase = this.postgresStarted
-      ? stopPostgres(seams.subprocess, {
-          initdbPath: layout.bin.initdb,
-          pgCtlPath: layout.bin.pgCtl,
-          pgDataDir: layout.pgDataDir,
-          logPath: layout.postgresLog,
-          socketDir: layout.runDir,
-          graceMs: this.config.stopGraceMs,
-        }).then((mode) => {
-          logger.info('dsh-sub2api-sidecar: postgres stopped (%s shutdown); data preserved at %s', mode, layout.dataDir)
-        })
-      : Promise.resolve()
-    await Promise.all([stopManaged, stopDatabase])
+    if (this.postgresHandle !== undefined) {
+      logger.info('dsh-sub2api-sidecar: postgres stopped; data preserved at %s', layout.dataDir)
+    }
     this.serverHandle = undefined
     this.redis = undefined
-    this.postgresStarted = false
+    this.postgresHandle = undefined
     this.startPromise = undefined
     logger.info('dsh-sub2api-sidecar: sidecar chain stopped')
   }

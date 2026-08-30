@@ -30,8 +30,8 @@ export interface Layout {
     readonly sub2api: string
     /** PostgreSQL cluster initialization tool. */
     readonly initdb: string
-    /** PostgreSQL server control tool (start and stop). */
-    readonly pgCtl: string
+    /** PostgreSQL foreground server owned by the subprocess seam. */
+    readonly postgres: string
     /** Optional redis-server; absent means the pack does not carry one. */
     readonly redis: string
   }
@@ -43,7 +43,7 @@ export interface Layout {
   readonly redisSkipMarker: string
   /** sub2api stdout/stderr spill file. */
   readonly sub2apiLog: string
-  /** postgres log file written via `pg_ctl -l`. */
+  /** PostgreSQL collector log file. */
   readonly postgresLog: string
   /** redis log file written by the launcher. */
   readonly redisLog: string
@@ -66,7 +66,7 @@ export function resolveLayout(config: SidecarConfig): Layout {
     bin: {
       sub2api: path.join(config.binaryDir, 'bin', 'sub2api'),
       initdb: path.join(config.binaryDir, 'bin', 'initdb'),
-      pgCtl: path.join(config.binaryDir, 'bin', 'pg_ctl'),
+      postgres: path.join(config.binaryDir, 'bin', 'postgres'),
       redis: path.join(config.binaryDir, 'bin', 'redis-server'),
     },
     stateFile: path.join(runDir, 'supervisor-state.json'),
@@ -91,7 +91,7 @@ export async function prepareLayout(layout: Layout): Promise<void> {
   const required: ReadonlyArray<[string, string]> = [
     ['sub2api', layout.bin.sub2api],
     ['initdb', layout.bin.initdb],
-    ['pg_ctl', layout.bin.pgCtl],
+    ['postgres', layout.bin.postgres],
   ]
   for (const [name, filePath] of required) {
     await fs.access(filePath, fs.constants.X_OK).catch(() => {

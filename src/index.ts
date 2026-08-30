@@ -8,7 +8,7 @@
  * The function plugin mounts with `inject: ['subprocess', 'credentials',
  * 'settings', 'webServer']`, resolves the entry config once, and — when
  * enabled — starts the whole chain inside one effect whose disposer stops it
- * again: portable PostgreSQL (initdb once, pg_ctl start/stop), the pack's
+ * again: portable PostgreSQL (initdb once, then a managed foreground server), the pack's
  * redis-server (or a configured skip/external endpoint), the pinned sub2api
  * binary in `RUN_MODE=simple` bound to 127.0.0.1, the `/health` poll, the
  * idempotent dual-key bootstrap (`admin-` management key and `sk-` composite

@@ -1,8 +1,8 @@
 /**
  * Batch execution helpers over the subprocess seam: run one short-lived tool
- * (initdb, pg_ctl) to completion and surface failures with the collected
- * stderr tail. Long-lived processes (postgres via pg_ctl start, redis,
- * sub2api) are spawned through the seam directly and stay handle-owned.
+ * (initdb) to completion and surface failures with the collected stderr tail.
+ * Long-lived processes (postgres, redis, sub2api) are spawned through the
+ * seam directly and stay handle-owned.
  *
  * @module dsh-sub2api-sidecar/batch
  */

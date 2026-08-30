@@ -69,9 +69,10 @@ On `apply` it runs one supervised boot:
 
 1. Prepare `$DSH_HOME/sub2api/` — `data/` (sub2api `DATA_DIR`, PostgreSQL
    cluster) and `run/` (logs, sockets, state) are created `0700`; the pack
-   directory (`config.binaryDir`) must already carry `bin/{sub2api,initdb,pg_ctl}`.
-2. First use only: `initdb` the cluster; then `pg_ctl start` PostgreSQL bound
-   to `127.0.0.1` on a port scanned from `config.portRange`.
+   directory (`config.binaryDir`) must already carry `bin/{sub2api,initdb,postgres}`.
+2. First use only: `initdb` the cluster; then start PostgreSQL in the foreground
+   through the host subprocess seam, bound to `127.0.0.1` on a port scanned
+   from `config.portRange`.
 3. Start the pack's `redis-server`. The darwin pack ships a loud placeholder
    (see `pack-sources.lock.json`), so the boot fails naming the lock entry
    unless `config.redis.skip` (recorded in `run/redis.skipped.json`) or
@@ -95,10 +96,9 @@ On `apply` it runs one supervised boot:
 6. On health failure none of this registers: no key is written, no settings
    write happens, and the boot error names the cause.
 
-Disposal (fiber unload, Cordis HMR reload, or host shutdown) starts PostgreSQL
-shutdown through `pg_ctl stop` (fast, then immediate) in parallel with the
-sub2api and redis process-tree termination (SIGTERM → grace → SIGKILL), so the
-daemonized database does not wait behind either grace window. `data/` is never
+Disposal (fiber unload, Cordis HMR reload, or host shutdown) terminates the
+managed PostgreSQL, sub2api, and redis process trees in parallel (SIGTERM →
+grace → SIGKILL). `data/` is never
 deleted or emptied; a reload reuses the running keys, re-runs nothing that is
 already correct, and never starts a second process set behind one runtime dir.
 
@@ -111,7 +111,7 @@ Configuration (cordis.yml `config` on the plugin row; every field optional):
 | `binaryDir` | `<runtimeDir>/runtime` | Unpacked runtime pack location. |
 | `portRange` | `{min: 45100, max: 45199}` | Loopback scan range for postgres, redis, and the server. |
 | `healthTimeoutMs` / `healthPollMs` | `120000` / `500` | `/health` budget and probe interval. |
-| `stopGraceMs` | `8000` | SIGTERM→SIGKILL grace and `pg_ctl` stop wait. |
+| `stopGraceMs` | `8000` | SIGTERM→SIGKILL grace per managed process. |
 | `adminEmail` / `adminPassword` | `admin@sub2api.local` / generated | AUTO_SETUP admin account; a generated password is kept in `run/admin-password` (`0600`) for later logins and never logged. |
 | `compliance.acceptOnBoot` | `true` | Acknowledge upstream's administrator compliance commitment on boot (echoing the exact phrase upstream issues, document URL logged). When `false`, a required acknowledgement fails the boot loudly naming the document. |
 | `group.name` / `group.description` | `dsh-composite` | The composite group the bootstrap ensures. |
@@ -302,7 +302,7 @@ pnpm bundle      # tsdown emits lib/client.js (the browser half)
 
 The tests run a fake sub2api (an `node:http` server implementing the login,
 admin-key, group, and panel-key endpoints with the upstream auth split), fake
-`initdb`/`pg_ctl` scripts, and a fake redis listener through a real
+`initdb`/foreground-postgres scripts, and a fake redis listener through a real
 process-tree subprocess provider, so dispose and idempotency assertions
 observe real process exits. The host-half suites add an in-process fake admin
 API with per-request header recording and a dispatching web server seam

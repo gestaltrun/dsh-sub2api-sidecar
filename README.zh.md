@@ -61,9 +61,9 @@ CI（`.github/workflows/runtime-pack.yml`）在 push 与 `workflow_dispatch` 时
 
 1. 准备 `$DSH_HOME/sub2api/`——`data/`（sub2api `DATA_DIR`、PostgreSQL 集群）与
    `run/`（日志、socket、状态）以 `0700` 创建；包目录（`config.binaryDir`）须已
-   含 `bin/{sub2api,initdb,pg_ctl}`。
-2. 仅首次：对集群执行 `initdb`；随后 `pg_ctl start` 把 PostgreSQL 起在
-   `127.0.0.1`，端口从 `config.portRange` 扫描分配。
+   含 `bin/{sub2api,initdb,postgres}`。
+2. 仅首次：对集群执行 `initdb`；随后通过宿主 subprocess seam 在前台启动
+   PostgreSQL，绑定到 `127.0.0.1`，端口从 `config.portRange` 扫描分配。
 3. 启动包内 `redis-server`。darwin 包目前是响亮占位（见
    `pack-sources.lock.json`），未配置跳过或外部端点时启动即报错并指名 lock 条目；
    `config.redis.skip`（记录到 `run/redis.skipped.json`）或 `config.redis.external`
@@ -81,9 +81,8 @@ CI（`.github/workflows/runtime-pack.yml`）在 push 与 `workflow_dispatch` 时
    凭据引用）。
 6. 健康检查失败时全部不注册：不写 key、不写 llm-pi-ai，错误显式指名原因。
 
-dispose（fiber 卸载、Cordis HMR 重载、宿主退出）会并行启动 `pg_ctl stop`（先
-fast，后 immediate）关闭 PostgreSQL，并对 sub2api 与 redis 进程树执行 SIGTERM
-→ 宽限 → SIGKILL，因此 daemonized 数据库不会排在任一宽限窗口之后。`data/`
+dispose（fiber 卸载、Cordis HMR 重载、宿主退出）会并行终止受管的 PostgreSQL、
+sub2api 与 redis 进程树（SIGTERM → 宽限 → SIGKILL）。`data/`
 永不删除或清空；重载复用既有 key，不重复正确的步骤，也不会
 在同一 runtime dir 下拉起第二套进程。
 
@@ -96,7 +95,7 @@ fast，后 immediate）关闭 PostgreSQL，并对 sub2api 与 redis 进程树执
 | `binaryDir` | `<runtimeDir>/runtime` | 运行时包解包位置。 |
 | `portRange` | `{min: 45100, max: 45199}` | postgres、redis、server 的回环端口扫描段。 |
 | `healthTimeoutMs` / `healthPollMs` | `120000` / `500` | `/health` 预算与探测间隔。 |
-| `stopGraceMs` | `8000` | SIGTERM→SIGKILL 宽限与 `pg_ctl` stop 等待。 |
+| `stopGraceMs` | `8000` | 每个受管进程的 SIGTERM→SIGKILL 宽限。 |
 | `adminEmail` / `adminPassword` | `admin@sub2api.local` / 随机生成 | AUTO_SETUP 管理员账号；生成的密码保存在 `run/admin-password`（`0600`）供后续登录，绝不写日志。 |
 | `compliance.acceptOnBoot` | `true` | 启动时确认上游的管理员合规承诺（原样回传上游下发的确认短语，并记录文档 URL）。设为 `false` 时，未确认的合规门槛会让启动大声失败并指明文档。 |
 | `group.name` / `group.description` | `dsh-composite` | bootstrap 确保的 composite 组。 |
@@ -250,7 +249,7 @@ pnpm bundle      # tsdown 产出 lib/client.js（浏览器半）
 ```
 
 测试经由真实的进程树 subprocess provider 驱动假 sub2api（`node:http` 实现
-登录、admin key、组、面板 key 端点并复刻上游鉴权分流）、假 `initdb`/`pg_ctl`
+登录、admin key、组、面板 key 端点并复刻上游鉴权分流）、假 `initdb`/前台 `postgres`
 脚本与假 redis 监听器，因此 dispose 与幂等断言观察到的是真实进程退出。host 半
 各套测试另有进程内假 admin API（逐请求记录请求头）与可派发的 web server seam
 替身，注入、剥离、准入与快照新鲜度都在真实回环 HTTP 上断言。
