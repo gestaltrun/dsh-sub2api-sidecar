@@ -65,9 +65,10 @@ describe('supervisor happy path', () => {
     const gateway = await fetch(`${baseURL}/models`, { headers: { authorization: `Bearer ${inferenceKey}` } })
     expect(gateway.status).toBe(200)
 
-    // Exactly one process set: one sub2api boot, one redis boot, one initdb.
+    // Exactly one process set: one sub2api boot, one redis boot, one postgres boot, one initdb.
     expect(await bootLines(world.stateDir, 'sub2api-boots.log')).toHaveLength(1)
     expect(await bootLines(world.stateDir, 'redis-boots.log')).toHaveLength(1)
+    expect(await bootLines(world.stateDir, 'postgres-boots.log')).toHaveLength(1)
     expect(await bootLines(world.stateDir, 'initdb-calls.log')).toHaveLength(1)
 
     // The state file records the bootstrap timestamp and no secret material.
@@ -122,8 +123,7 @@ describe('health failure refusal', () => {
     expect(world.settings.updates).toHaveLength(0)
 
     // The failure path still stopped what it had started.
-    const pgctlCalls = await readTextOrNull(path.join(world.stateDir, 'pgctl-calls.log'))
-    expect(pgctlCalls).toContain('stop')
+    expect(await readTextOrNull(path.join(world.stateDir, 'postgres-stopped'))).not.toBeNull()
     expect(await bootLines(world.stateDir, 'sub2api-boots.log')).toHaveLength(1)
     const stopped = await readTextOrNull(path.join(world.stateDir, 'sub2api-stopped'))
     expect(stopped).not.toBeNull()
@@ -133,7 +133,7 @@ describe('health failure refusal', () => {
 })
 
 describe('dispose semantics', () => {
-  it('starts PostgreSQL shutdown before a managed process finishes its grace', { timeout: 40_000 }, async () => {
+  it('stops managed PostgreSQL while another process finishes its grace', { timeout: 40_000 }, async () => {
     const { world, ctx } = useWorld(await createWorld({ shutdownDelayMs: 1_000 }))
     await apply(ctx, world.rawConfig)
 
@@ -145,9 +145,9 @@ describe('dispose semantics', () => {
     }
     queueMicrotask(() => { providerActive = false })
     const stopping = Promise.resolve(world.effects[0]?.()())
-    await expect.poll(async () => await readTextOrNull(path.join(world.stateDir, 'pgctl-calls.log')), {
+    await expect.poll(async () => await readTextOrNull(path.join(world.stateDir, 'postgres-stopped')), {
       timeout: 500,
-    }).toContain('stop')
+    }).not.toBeNull()
     expect(await readTextOrNull(path.join(world.stateDir, 'sub2api-stopped'))).toBeNull()
     await stopping
   })
@@ -162,8 +162,7 @@ describe('dispose semantics', () => {
 
     expect(await readTextOrNull(path.join(world.stateDir, 'sub2api-stopped'))).not.toBeNull()
     expect(await readTextOrNull(path.join(world.stateDir, 'redis-stopped'))).not.toBeNull()
-    const pgctlCalls = await readTextOrNull(path.join(world.stateDir, 'pgctl-calls.log'))
-    expect(pgctlCalls).toContain('stop')
+    expect(await readTextOrNull(path.join(world.stateDir, 'postgres-stopped'))).not.toBeNull()
     // Data survives dispose.
     await expect(fs.access(pgVersion)).resolves.toBeUndefined()
   })
