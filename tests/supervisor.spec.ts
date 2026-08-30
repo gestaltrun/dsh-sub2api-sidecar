@@ -137,6 +137,13 @@ describe('dispose semantics', () => {
     const { world, ctx } = useWorld(await createWorld({ shutdownDelayMs: 1_000 }))
     await apply(ctx, world.rawConfig)
 
+    const spawn = world.subprocess.spawn.bind(world.subprocess)
+    let providerActive = true
+    world.subprocess.spawn = (spec) => {
+      if (!providerActive) throw new Error('subprocess provider is disposing')
+      return spawn(spec)
+    }
+    queueMicrotask(() => { providerActive = false })
     const stopping = Promise.resolve(world.effects[0]?.()())
     await expect.poll(async () => await readTextOrNull(path.join(world.stateDir, 'pgctl-calls.log')), {
       timeout: 500,
