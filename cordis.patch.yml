@@ -6,6 +6,11 @@
       name: dsh-sub2api-sidecar
       config:
         enabled: true
+        # The published darwin runtime pack intentionally carries a loud Redis
+        # placeholder. The installable bundle skips it until a trusted portable
+        # binary lands; deployments with Redis can override this row.
+        redis:
+          skip: true
         route:
           models:
             # The composite group serves whatever models its channels expose;

@@ -67,7 +67,8 @@ CI（`.github/workflows/runtime-pack.yml`）在 push 与 `workflow_dispatch` 时
 3. 启动包内 `redis-server`。darwin 包目前是响亮占位（见
    `pack-sources.lock.json`），未配置跳过或外部端点时启动即报错并指名 lock 条目；
    `config.redis.skip`（记录到 `run/redis.skipped.json`）或 `config.redis.external`
-   可替换内嵌组件。
+   可替换内嵌组件。已发布 bundle 层默认设置 `redis.skip: true`，因此 Desktop
+   一键安装可直接使用已发布 darwin pack；有 Redis 的部署可覆盖该行。
 4. 以 `RUN_MODE=simple`、`SERVER_HOST=127.0.0.1`、`AUTO_SETUP=true` 启动
    `sub2api`，在 `config.healthTimeoutMs` 内轮询 `/health`。
 5. Bootstrap（幂等，凭据复用）：用 AUTO_SETUP 管理员凭据登录 → 待上游管理员合规
@@ -99,7 +100,7 @@ PostgreSQL。`data/` 永不删除或清空；重载复用既有 key，不重复�
 | `compliance.acceptOnBoot` | `true` | 启动时确认上游的管理员合规承诺（原样回传上游下发的确认短语，并记录文档 URL）。设为 `false` 时，未确认的合规门槛会让启动大声失败并指明文档。 |
 | `group.name` / `group.description` | `dsh-composite` | bootstrap 确保的 composite 组。 |
 | `route.name` / `route.api` / `route.displayName` / `route.models` | `sub2api` / `openai-completions` / `Sub2API (sub2api)` / 一个 Claude 模型 | 写入 `llm-pi-ai` 的手声明路由；`models` 请按部署实际服务的模型调整。 |
-| `redis.skip` / `redis.external` | `false` / – | 跳过内嵌组件（留痕），或指向外部 Redis。 |
+| `redis.skip` / `redis.external` | `false` / – | function 插件默认值；已发布 bundle 层针对 darwin 占位设置 `skip: true`，部署可覆盖或指向外部 Redis。 |
 | `credentials.adminRef` / `credentials.inferenceRef` | `SUB2API_ADMIN_API_KEY` / `SUB2API_API_KEY` | 两把 key 的凭据引用。 |
 | `proxy.enabled` | `true` | 是否挂载注入转发面前缀与额度快照路由。 |
 | `proxy.allowedOrigins` | `[]` | 除宿主自身 origin 外，两条宿主路由额外信任的绝对 origin。 |
