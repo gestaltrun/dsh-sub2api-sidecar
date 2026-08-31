@@ -24,6 +24,7 @@ runtime-pack-<sub2api-ver>-<os>-<arch>.tar.gz
 ├── share/
 │   ├── config.template.yaml run_mode=simple, binds 127.0.0.1; data lives in
 │   │                        $DSH_HOME/sub2api/data, separate from this pack
+│   ├── runtime-provenance.json exact Sub2API source ref and binary SHA256
 │   └── postgresql/          PostgreSQL timezones and extension metadata
 └── SHA256SUMS
 ```
@@ -32,7 +33,11 @@ Source strategy (full rationale in `pack-sources.lock.json`):
 
 - **Sub2API** — official goreleaser assets from the `Wei-Shaw/sub2api` GitHub
   release, pinned in the lock file; `--sub2api-version` can override the pin,
-  in which case the release's own `checksums.txt` is trusted.
+  in which case the release's own `checksums.txt` is trusted. A product branch
+  can instead supply an exact built binary with `--sub2api-binary` plus the
+  immutable `--sub2api-source-ref repository@commit`; the pack records that
+  provenance and the binary hash. `--base-runtime-pack` can reuse the verified
+  PostgreSQL/Redis tree from an earlier pack when only Sub2API changes.
 - **PostgreSQL** — `zonky/embedded-postgres-binaries` artifacts on Maven
   Central (PG 17.x), the only maintained distribution covering darwin arm64 and
   amd64 with checksum sidecars.

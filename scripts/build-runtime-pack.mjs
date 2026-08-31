@@ -15,7 +15,7 @@ import { createReadStream, createWriteStream } from "node:fs";
 import fs from "node:fs/promises";
 import path from "node:path";
 import { Readable } from "node:stream";
-import { fileURLToPath } from "node:url";
+import { fileURLToPath, pathToFileURL } from "node:url";
 import { parseArgs } from "node:util";
 
 const REPO_ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
@@ -45,6 +45,9 @@ function parseCli() {
       os: { type: "string", default: "darwin" },
       arch: { type: "string", default: "arm64" },
       "sub2api-version": { type: "string" },
+      "sub2api-binary": { type: "string" },
+      "sub2api-source-ref": { type: "string" },
+      "base-runtime-pack": { type: "string" },
       dist: { type: "string" },
       "downloads-cache": { type: "string" },
       "keep-work": { type: "boolean", default: false },
@@ -57,6 +60,9 @@ function parseCli() {
   --arch             target arch, default arm64 (aliases: x64 -> amd64, aarch64 -> arm64)
   --sub2api-version  override the pinned Sub2API version; the hash then comes from the
                      release's official checksums.txt instead of the lock file
+  --sub2api-binary   use this exact locally built Sub2API binary instead of a release asset
+  --sub2api-source-ref  required with --sub2api-binary; immutable repository@commit provenance
+  --base-runtime-pack  reuse the verified PostgreSQL/Redis tree from this runtime pack
   --dist             output directory, default <repo>/dist
   --downloads-cache  dir that caches verified downloads for reruns; files must still
                      match the pinned SHA256 to be used
@@ -69,6 +75,9 @@ function parseCli() {
     os: osAliases[values.os] ?? values.os,
     arch: archAliases[values.arch] ?? values.arch,
     sub2apiVersion: values["sub2api-version"] || null,
+    sub2apiBinary: values["sub2api-binary"] ? path.resolve(values["sub2api-binary"]) : null,
+    sub2apiSourceRef: values["sub2api-source-ref"] || null,
+    baseRuntimePack: values["base-runtime-pack"] ? path.resolve(values["base-runtime-pack"]) : null,
     distDir: values.dist ? path.resolve(values.dist) : path.join(REPO_ROOT, "dist"),
     downloadsCache: values["downloads-cache"] ? path.resolve(values["downloads-cache"]) : null,
     keepWork: values["keep-work"],
@@ -257,7 +266,31 @@ async function fetchSub2api(lock, cli, version, workDir, packBin) {
   const target = path.join(packBin, "sub2api");
   await fs.copyFile(binary, target);
   await fs.chmod(target, 0o755);
-  return { url, version, sha256: expected.sha256 };
+  return {
+    url,
+    version,
+    sourceRef: `Wei-Shaw/sub2api@v${version}`,
+    archiveSha256: expected.sha256,
+    binarySha256: await sha256File(target),
+  };
+}
+
+/** Copy one exact locally built Sub2API binary into the pack with provenance. */
+export async function installLocalSub2api(binaryPath, sourceRef, version, packBin) {
+  if (sourceRef.trim() === "") fail("--sub2api-source-ref must name an immutable repository@commit");
+  const sourceStat = await fs.stat(binaryPath).catch(() => null);
+  if (!sourceStat?.isFile()) fail(`--sub2api-binary is not a regular file: ${binaryPath}`);
+  await fs.mkdir(packBin, { recursive: true });
+  const target = path.join(packBin, "sub2api");
+  await fs.copyFile(binaryPath, target);
+  await fs.chmod(target, 0o755);
+  return {
+    url: null,
+    version,
+    sourceRef,
+    archiveSha256: null,
+    binarySha256: await sha256File(target),
+  };
 }
 
 async function fetchPostgresql(lock, cli, workDir, packDir) {
@@ -329,6 +362,31 @@ async function copyDir(from, to) {
       await fs.copyFile(source, dest);
     }
   }
+}
+
+async function verifyPackTree(packDir) {
+  const text = await fs.readFile(path.join(packDir, "SHA256SUMS"), "utf8");
+  for (const line of text.split("\n")) {
+    if (line.trim() === "") continue;
+    const match = /^([a-f0-9]{64})  (.+)$/.exec(line);
+    if (!match) fail(`invalid inner SHA256SUMS line in base runtime pack: ${line}`);
+    const file = path.resolve(packDir, match[2]);
+    if (!file.startsWith(`${path.resolve(packDir)}${path.sep}`)) fail(`base runtime pack checksum escapes root: ${match[2]}`);
+    const actual = await sha256File(file).catch(() => null);
+    if (actual !== match[1]) fail(`base runtime pack checksum mismatch: ${match[2]}`);
+  }
+}
+
+async function seedFromBaseRuntimePack(archive, workDir, packDir) {
+  const extracted = path.join(workDir, "base-runtime-pack");
+  await fs.mkdir(extracted, { recursive: true });
+  await extract("tar", ["-xzf", archive, "-C", extracted], "extracting base runtime pack");
+  const roots = (await fs.readdir(extracted, { withFileTypes: true })).filter((entry) => entry.isDirectory());
+  if (roots.length !== 1) fail("base runtime pack must contain exactly one top-level directory");
+  const root = path.join(extracted, roots[0].name);
+  await verifyPackTree(root);
+  await copyDir(root, packDir);
+  await fs.rm(path.join(packDir, "SHA256SUMS"), { force: true });
 }
 
 // darwin ships no trustworthy portable Redis binary (rationale and
@@ -488,6 +546,12 @@ async function main() {
   const platform = resolvePlatform(lock, cli.os, cli.arch);
   const fullCli = { ...cli, platform };
   const version = cli.sub2apiVersion || lock.sources.sub2api.defaultVersion;
+  if ((cli.sub2apiBinary === null) !== (cli.sub2apiSourceRef === null)) {
+    fail("--sub2api-binary and --sub2api-source-ref must be provided together");
+  }
+  if (cli.baseRuntimePack !== null && cli.sub2apiBinary === null) {
+    fail("--base-runtime-pack requires --sub2api-binary and --sub2api-source-ref");
+  }
 
   const packName = `runtime-pack-${version}-${cli.os}-${cli.arch}`;
   const workDir = path.join(cli.distDir, ".work");
@@ -501,10 +565,26 @@ async function main() {
   await fs.mkdir(packBin, { recursive: true });
   await fs.mkdir(packShare, { recursive: true });
 
-  const sub2api = await fetchSub2api(lock, fullCli, version, workDir, packBin);
-  const postgresql = await fetchPostgresql(lock, fullCli, workDir, packDir);
-  const redis = await writeRedisPlaceholder(lock, platform, packBin);
+  if (cli.baseRuntimePack !== null) await seedFromBaseRuntimePack(cli.baseRuntimePack, workDir, packDir);
+  const sub2api = cli.sub2apiBinary === null
+    ? await fetchSub2api(lock, fullCli, version, workDir, packBin)
+    : await installLocalSub2api(cli.sub2apiBinary, cli.sub2apiSourceRef, version, packBin);
+  const postgresql = cli.baseRuntimePack === null
+    ? await fetchPostgresql(lock, fullCli, workDir, packDir)
+    : { url: `base runtime pack ${path.basename(cli.baseRuntimePack)}`, version: lock.sources.postgresql.version };
+  const redis = cli.baseRuntimePack === null
+    ? await writeRedisPlaceholder(lock, platform, packBin)
+    : { url: null, version: "from verified base runtime pack", sha256: null };
   await fs.writeFile(path.join(packShare, "config.template.yaml"), configTemplate(packName));
+  await fs.writeFile(path.join(packShare, "runtime-provenance.json"), `${JSON.stringify({
+    formatVersion: 1,
+    sub2api: {
+      version: sub2api.version,
+      sourceRef: sub2api.sourceRef,
+      binarySha256: sub2api.binarySha256,
+      archiveSha256: sub2api.archiveSha256,
+    },
+  }, null, 2)}\n`);
 
   const sumsPath = path.join(packDir, "SHA256SUMS");
   const packedFiles = await writeSha256Sums(packDir, sumsPath);
@@ -530,11 +610,13 @@ runtime pack built: ${tarball}
   sha256: ${tarballSha}
   checksums: ${distSums}
 components:
-  sub2api     ${sub2api.version}  ${sub2api.url}
+  sub2api     ${sub2api.version}  ${sub2api.sourceRef}
   postgresql  ${postgresql.version}  ${postgresql.url}
   redis       ${redis.version}  (no darwin distribution; see pack-sources.lock.json sources.redis)
 `,
   );
 }
 
-await main();
+if (process.argv[1] !== undefined && import.meta.url === pathToFileURL(process.argv[1]).href) {
+  await main();
+}
