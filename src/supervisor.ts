@@ -99,7 +99,8 @@ export class Supervisor {
    * @returns the supervisor and a token disposer releasing this acquisition.
    */
   static async acquire(options: SupervisorOptions): Promise<{ supervisor: Supervisor; release: () => Promise<void> }> {
-    const key = options.config.runtimeDir
+    await fs.mkdir(options.config.runtimeDir, { recursive: true, mode: 0o700 })
+    const key = await fs.realpath(options.config.runtimeDir)
     for (;;) {
       let entry = registry().get(key)
       if (entry?.supervisor.stopping !== undefined) {
