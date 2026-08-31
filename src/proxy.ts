@@ -66,6 +66,8 @@ export interface AdminProxyOptions {
   readonly logger: LoggerLike
   /** The live sidecar port source. */
   readonly sidecar: SidecarSource
+  /** Notify catalog ownership after one successful admin mutation. */
+  readonly onCatalogMutation?: () => void
 }
 
 /** One registered proxy instance. */
@@ -174,6 +176,7 @@ async function handle(
   }
 
   const responseHeaders = relayResponseHeaders(upstream)
+  if (upstream.ok && req.method !== 'GET' && req.method !== 'HEAD') options.onCatalogMutation?.()
   res.writeHead(upstream.status, responseHeaders)
   options.logger.info('dsh-sub2api-sidecar: proxy %s %s -> %d', req.method ?? '?', requestPath, upstream.status)
   if (upstream.body === null) {

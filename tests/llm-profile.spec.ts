@@ -4,7 +4,8 @@
 // route was already written must not suppress the write when the store
 // actually lacks the route.
 import { describe, expect, it } from 'vitest'
-import { writeProfile, LLM_PI_AI_NAMESPACE, type DesiredProfile } from '../src/llm-profile.ts'
+import { desiredProfile, writeProfile, LLM_PI_AI_NAMESPACE, type DesiredProfile } from '../src/llm-profile.ts'
+import { resolveConfig } from '../src/config.ts'
 import { FakeLogger, FakeSettings } from './helpers/world.ts'
 
 const ROUTE = 'sub2api'
@@ -18,6 +19,17 @@ const PROFILE: DesiredProfile = {
 }
 
 describe('llm-pi-ai writeProfile', () => {
+  it('uses the live gateway catalog as the complete provider model list', () => {
+    const config = resolveConfig({}, { DSH_HOME: '/tmp/dsh-test' })
+    expect(desiredProfile(config, 45101, [
+      { id: 'glm-4.5', name: 'glm-4.5' },
+      { id: 'deepseek-chat', name: 'deepseek-chat' },
+    ]).models).toEqual([
+      { id: 'glm-4.5', name: 'glm-4.5' },
+      { id: 'deepseek-chat', name: 'deepseek-chat' },
+    ])
+  })
+
   it('A: writes when the store lacks the route even though a write memo exists (regression)', async () => {
     const settings = new FakeSettings()
     // Simulates the stale memo scenario: supervisor-state.json claims the

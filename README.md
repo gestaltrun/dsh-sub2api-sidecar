@@ -95,9 +95,10 @@ On `apply` it runs one supervised boot:
    that group (`sk-…`). Both keys are stored through the credentials seam
    (its local provider keeps them `0600`) and never logged. After issuance the
    convention is re-verified: the `sk-` key must be refused with 401 on the
-   admin plane. A healthy boot ends by writing the hand-declared composite
-   route into the `llm-pi-ai` settings namespace (`baseURL` = the sidecar's
-   `/v1` endpoint, `apiKeyEnv` = the `sk-` credential reference).
+   admin plane. A healthy boot reads the models served by that group-bound key
+   from `/v1/models` and writes the resulting provider route into the
+   `llm-pi-ai` settings namespace (`baseURL` = the sidecar's `/v1` endpoint,
+   `apiKeyEnv` = the `sk-` credential reference).
 6. On health failure none of this registers: no key is written, no settings
    write happens, and the boot error names the cause.
 
@@ -120,13 +121,14 @@ Configuration (cordis.yml `config` on the plugin row; every field optional):
 | `adminEmail` / `adminPassword` | `admin@sub2api.local` / generated | AUTO_SETUP admin account; a generated password is kept in `run/admin-password` (`0600`) for later logins and never logged. |
 | `compliance.acceptOnBoot` | `true` | Acknowledge upstream's administrator compliance commitment on boot (echoing the exact phrase upstream issues, document URL logged). When `false`, a required acknowledgement fails the boot loudly naming the document. |
 | `group.name` / `group.description` | `dsh-composite` | The composite group the bootstrap ensures. |
-| `route.name` / `route.api` / `route.displayName` / `route.models` | `sub2api` / `openai-completions` / `Sub2API (sub2api)` / one Claude model | The hand-declared provider route written into `llm-pi-ai`; set `models` to what your deployment actually serves. |
+| `route.name` / `route.api` / `route.displayName` / `route.models` | `sub2api` / `openai-completions` / `Sub2API (sub2api)` / one Claude model | Provider identity plus the fallback catalog used only before live `/v1/models` discovery succeeds. |
 | `redis.skip` / `redis.external` | `false` / – | Function-plugin defaults. The published bundle layer sets `skip: true` for the darwin placeholder; deployments can override it or point at external Redis. |
 | `credentials.adminRef` / `credentials.inferenceRef` | `SUB2API_ADMIN_API_KEY` / `SUB2API_API_KEY` | Credential references for the two keys. |
 | `proxy.enabled` | `true` | Mount the admin injection proxy prefix and the quota snapshot route. |
 | `proxy.allowedOrigins` | `[]` | Extra absolute origins trusted by both host-side routes besides the host's own. |
 | `proxy.timeoutMs` | `30000` | Per-request upstream budget for one forwarded call or quota probe. |
 | `quotaPollMs` | `60000` | Interval between quota snapshot polls. |
+| `modelCatalogPollMs` | `5000` | Fallback interval for refreshing the provider catalog from the group-bound `/v1/models`; successful admin mutations also refresh immediately. |
 
 The admin login account exists only because upstream AUTO_SETUP requires one;
 it is not surfaced to the user, and the product surfaces are the two keys
@@ -256,6 +258,13 @@ this poll; the desktop embed uses it for the direct-console fallback link.
 - The snapshot is a field whitelist: credential-shaped upstream fields cannot
   appear in it, and no key material is ever included.
 
+The provider model catalog is authoritative from the group-bound inference
+key's `/v1/models`. Successful account, group, and Composite-route mutations
+request an immediate refresh; `modelCatalogPollMs` covers upstream cache
+invalidation and out-of-band changes. A failed or empty live response retains
+the last provider settings, and the configured route models remain a boot-only
+fallback.
+
 ## Embedded console (browser half)
 
 The package carries a browser face next to the node half, following the
@@ -276,20 +285,15 @@ The browser half registers one entry — 订阅账号池 — in the settings she
   snapshot's `reason`, a retry action, and — when the snapshot carries the
   supervised server's port — the 「打开本地管理台直连」 loopback link that
   opens the sidecar's own console (with its native login page) in a new tab.
-- Once the snapshot is `ready`, the section splits into two columns
-  (console v1.2): the left column is the host-side management panel — route
-  management (`src/client/CompositeRoutesPanel.tsx`, data layer
-  `src/client/composite-routes.ts`: saved-routes table, add/edit form,
-  resolution preview) plus the collapsible proxy card
-  (`src/client/ProxyPanel.tsx`, data layer `src/client/proxies.ts`: filtered
-  list, CRUD, connection test and quality check; upstream's account form
-  reads the same proxies table for its 代理 dropdown, so a proxy saved here
-  appears there without refreshing the iframe; import/export stay excluded
-  as step-up flows). All calls ride the same-origin injection proxy's
-  corresponding endpoints. The right column embeds the account-management
-  page in an iframe pointed at the same-origin passthrough
-  `/plugins/dsh-sub2api/ui/`. The container keeps polling at a slow cadence
-  so a later sidecar stop flips it back to the fallback card.
+- Once the snapshot is `ready`, the section embeds the Desktop account
+  workspace from the same-origin passthrough `/plugins/dsh-sub2api/ui/`. The
+  native Sub2API account components own account CRUD, proxy management, and
+  Composite routing in one page. Desktop embed mode removes the upstream app
+  shell, hides advanced scheduling and quota fields whose existing defaults
+  remain authoritative, and follows the host theme and locale. The borderless
+  iframe expands with its document so the Settings content pane owns vertical
+  scrolling. The container keeps polling at a slow cadence so a later sidecar
+  stop flips it back to the fallback card.
 
 Development adds `pnpm bundle` (tsdown) next to the existing commands; the
 bundle compiles CSS Modules with lightningcss inside the artifact, so no

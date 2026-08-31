@@ -1,5 +1,5 @@
 /**
- * The `llm-pi-ai` settings contribution: one hand-declared provider route
+ * The `llm-pi-ai` settings contribution: one Sub2API-backed provider route
  * whose baseURL is the sidecar's loopback endpoint and whose `apiKeyEnv` names
  * the `sk-` inference credential reference. The write goes through the
  * settings seam's `update` (a per-provider dict merge), and repeats only when
@@ -31,7 +31,8 @@ export interface DesiredProfile {
 }
 
 /**
- * Build the desired profile for the current boot.
+ * Build the desired profile from the live gateway catalog, or the configured
+ * fallback before live discovery succeeds.
  * @param config - the resolved plugin configuration.
  * @param serverPort - the sidecar server port allocated this boot.
  * @returns the profile payload for the route key.
@@ -39,19 +40,19 @@ export interface DesiredProfile {
 export function desiredProfile(
   config: SidecarConfig,
   serverPort: number,
-  derivedModels: ReadonlyArray<{ id: string; name: string }> = [],
+  discoveredModels: ReadonlyArray<{ id: string; name: string }> = [],
 ): DesiredProfile {
   const configured = config.route.models.map((model) => ({ ...model }))
-  const known = new Set(configured.map((model) => model.id))
-  const derived = derivedModels
-    .filter((model) => !known.has(model.id))
-    .map((model) => ({ id: model.id, name: model.name }))
+  const configuredById = new Map(configured.map((model) => [model.id, model]))
+  const models = discoveredModels.length === 0
+    ? configured
+    : discoveredModels.map((model) => configuredById.get(model.id) ?? { id: model.id, name: model.name })
   return {
     apiKeyEnv: config.credentials.inferenceRef,
     displayName: config.route.displayName,
     api: config.route.api,
     baseURL: `http://127.0.0.1:${serverPort}/v1`,
-    models: [...configured, ...derived],
+    models,
   }
 }
 
@@ -73,7 +74,7 @@ function desiredIsStored(desired: unknown, stored: unknown): boolean {
 }
 
 /**
- * Ensure the hand-declared route is present in the `llm-pi-ai` settings
+ * Ensure the Sub2API-backed route is present in the `llm-pi-ai` settings
  * namespace, judged against the **live resolved store**: the write repeats
  * whenever the stored route is absent or diverges from the desired profile,
  * and skips only when the store already contains it. A persisted memo of

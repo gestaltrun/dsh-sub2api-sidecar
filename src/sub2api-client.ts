@@ -326,6 +326,25 @@ export class Sub2apiClient {
   }
 
   /**
+   * Read the model catalog the inference key can actually serve.
+   * @param key - the group-bound inference key.
+   * @returns unique model ids in gateway order.
+   */
+  async listGatewayModels(key: string): Promise<Array<{ id: string; name: string }>> {
+    const data = await this.request<unknown>('GET', '/v1/models',
+      { kind: 'bearer', token: key }, undefined)
+    if (!Array.isArray(data)) throw new Error('sub2api gateway model list carries no data array')
+    const seen = new Set<string>()
+    return data.flatMap((entry) => {
+      if (typeof entry !== 'object' || entry === null) return []
+      const id = (entry as Record<string, unknown>)['id']
+      if (typeof id !== 'string' || id.length === 0 || seen.has(id)) return []
+      seen.add(id)
+      return [{ id, name: id }]
+    })
+  }
+
+  /**
    * Probe an admin endpoint with a candidate key. The upstream convention is
    * that only the settings-stored `admin-` key authenticates here, so a
    * gateway `sk-` key must be refused with 401.

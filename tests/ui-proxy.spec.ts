@@ -11,7 +11,7 @@ import fs from 'node:fs/promises'
 import os from 'node:os'
 import path from 'node:path'
 import vm from 'node:vm'
-import { afterAll, describe, expect, it } from 'vitest'
+import { afterAll, describe, expect, it, vi } from 'vitest'
 import { createServer } from 'node:http'
 import type { Server } from 'node:http'
 import type { AddressInfo } from 'node:net'
@@ -144,6 +144,8 @@ interface FixtureOptions {
   sidecarPort?: number
   /** Leave the admin key out of the credential store. */
   withoutKey?: boolean
+  /** Observe successful embedded admin mutations. */
+  onCatalogMutation?: () => void
 }
 
 /** One assembled fixture. */
@@ -174,6 +176,7 @@ async function useFixture(options: FixtureOptions = {}): Promise<{
     credentials,
     logger,
     sidecar: { port: options.noSidecar === true ? undefined : options.sidecarPort ?? sidecar.port },
+    ...(options.onCatalogMutation === undefined ? {} : { onCatalogMutation: options.onCatalogMutation }),
   })
   return { webServer, sidecar, logger, origin: `http://127.0.0.1:${String(webServer.port)}` }
 }
@@ -497,6 +500,19 @@ describe('asset and api mapping', () => {
     const plainCall = sidecar.requests.at(-1)
     expect(plainCall?.path).toBe('/api/v1/settings/public')
     expect(plainCall?.headers['x-api-key']).toBeUndefined()
+  })
+
+  it('notifies catalog ownership after an embedded admin mutation succeeds', { timeout: 15_000 }, async () => {
+    const onCatalogMutation = vi.fn()
+    const { webServer } = await useFixture({ onCatalogMutation })
+    const response = await fetch(`${webServer.origin}${UI_BASE_PATH}api/v1/admin/accounts`, {
+      method: 'POST',
+      headers: { origin: webServer.origin, 'content-type': 'application/json' },
+      body: JSON.stringify({ name: 'new account' }),
+    })
+
+    expect(response.status).toBe(200)
+    expect(onCatalogMutation).toHaveBeenCalledOnce()
   })
 
   it('answers the embedded-session auth endpoints itself and never forwards them', { timeout: 15_000 }, async () => {

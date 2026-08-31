@@ -8,7 +8,7 @@
 import fs from 'node:fs/promises'
 import os from 'node:os'
 import path from 'node:path'
-import { afterAll, describe, expect, it } from 'vitest'
+import { afterAll, describe, expect, it, vi } from 'vitest'
 import { resolveConfig } from '../src/config.ts'
 import { ADMIN_PROXY_PREFIX, registerAdminProxy } from '../src/proxy.ts'
 import { FakeCredentials, FakeLogger } from './helpers/world.ts'
@@ -34,6 +34,8 @@ interface FixtureOptions {
   sidecarPort?: number
   /** Leave the admin key out of the credential store. */
   withoutKey?: boolean
+  /** Observe successful admin mutations. */
+  onCatalogMutation?: () => void
 }
 
 /** One assembled fixture: fake sidecar, fake web server, credentials, logger, proxy registration. */
@@ -64,6 +66,7 @@ async function useFixture(options: FixtureOptions = {}): Promise<{
     credentials,
     logger,
     sidecar: { port: options.noSidecar === true ? undefined : options.sidecarPort ?? sidecar.port },
+    ...(options.onCatalogMutation === undefined ? {} : { onCatalogMutation: options.onCatalogMutation }),
   })
   return { webServer, sidecar, credentials, logger, origin: `http://127.0.0.1:${String(webServer.port)}` }
 }
@@ -97,7 +100,8 @@ describe('forwarding and header injection', () => {
   })
 
   it('forwards method, query, and JSON body unchanged', { timeout: 15_000 }, async () => {
-    const { webServer, sidecar } = await useFixture()
+    const onCatalogMutation = vi.fn()
+    const { webServer, sidecar } = await useFixture({ onCatalogMutation })
     sidecar.setRoute('POST /api/v1/admin/groups', okEnvelope({ id: 1, name: 'g', platform: 'composite' }))
 
     const response = await fetch(`${webServer.origin}${ADMIN_PROXY_PREFIX}/groups?platform=composite`, {
@@ -110,6 +114,7 @@ describe('forwarding and header injection', () => {
     expect(forwarded?.method).toBe('POST')
     expect(forwarded?.path).toBe('/api/v1/admin/groups?platform=composite')
     expect(forwarded?.headers['content-type']).toBe('application/json')
+    expect(onCatalogMutation).toHaveBeenCalledOnce()
   })
 
   it('normalizes dot segments inside the prefix and refuses escapes out of it', { timeout: 15_000 }, async () => {

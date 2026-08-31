@@ -80,9 +80,9 @@ CI（`.github/workflows/runtime-pack.yml`）在 push 与 `workflow_dispatch` 时
    admin settings API key（`admin-…`）→ find-or-create `composite` 组 → 创建
    绑定该组的面板 API key（`sk-…`）。两把 key 经 credentials seam 存储（本地
    provider 以 `0600` 保存），绝不写日志。签发后复核约定：`sk-` key 访问 admin
-   面必须 401。健康启动的最后一步：把手声明的 composite 路由写入 `llm-pi-ai`
-   settings namespace（`baseURL` = sidecar 的 `/v1` 端点，`apiKeyEnv` = `sk-`
-   凭据引用）。
+   面必须 401。健康启动的最后一步：用该组绑定 key 从 `/v1/models` 读取实际可用
+   模型，并把所得 Provider 路由写入 `llm-pi-ai` settings namespace（`baseURL`
+   = sidecar 的 `/v1` 端点，`apiKeyEnv` = `sk-` 凭据引用）。
 6. 健康检查失败时全部不注册：不写 key、不写 llm-pi-ai，错误显式指名原因。
 
 dispose（fiber 卸载、Cordis HMR 重载、宿主退出）会并行终止受管的 PostgreSQL、
@@ -103,13 +103,14 @@ sub2api 与 redis 进程树（SIGTERM → 宽限 → SIGKILL）。`data/`
 | `adminEmail` / `adminPassword` | `admin@sub2api.local` / 随机生成 | AUTO_SETUP 管理员账号；生成的密码保存在 `run/admin-password`（`0600`）供后续登录，绝不写日志。 |
 | `compliance.acceptOnBoot` | `true` | 启动时确认上游的管理员合规承诺（原样回传上游下发的确认短语，并记录文档 URL）。设为 `false` 时，未确认的合规门槛会让启动大声失败并指明文档。 |
 | `group.name` / `group.description` | `dsh-composite` | bootstrap 确保的 composite 组。 |
-| `route.name` / `route.api` / `route.displayName` / `route.models` | `sub2api` / `openai-completions` / `Sub2API (sub2api)` / 一个 Claude 模型 | 写入 `llm-pi-ai` 的手声明路由；`models` 请按部署实际服务的模型调整。 |
+| `route.name` / `route.api` / `route.displayName` / `route.models` | `sub2api` / `openai-completions` / `Sub2API (sub2api)` / 一个 Claude 模型 | Provider 标识以及仅在实时 `/v1/models` 发现成功前使用的回退目录。 |
 | `redis.skip` / `redis.external` | `false` / – | function 插件默认值；已发布 bundle 层针对 darwin 占位设置 `skip: true`，部署可覆盖或指向外部 Redis。 |
 | `credentials.adminRef` / `credentials.inferenceRef` | `SUB2API_ADMIN_API_KEY` / `SUB2API_API_KEY` | 两把 key 的凭据引用。 |
 | `proxy.enabled` | `true` | 是否挂载注入转发面前缀与额度快照路由。 |
 | `proxy.allowedOrigins` | `[]` | 除宿主自身 origin 外，两条宿主路由额外信任的绝对 origin。 |
 | `proxy.timeoutMs` | `30000` | 单次转发调用或额度探测的上游预算。 |
 | `quotaPollMs` | `60000` | 额度快照的轮询间隔。 |
+| `modelCatalogPollMs` | `5000` | 使用组绑定 `/v1/models` 刷新 Provider 模型目录的兜底间隔；成功的管理面变更还会立即触发刷新。 |
 
 管理员登录账号只因上游 AUTO_SETUP 的要求而存在，不对用户暴露；产品面只有两把
 key（规格 v1.1，gestaltrun/deepseek-harness-gestalt#346）。
@@ -214,6 +215,11 @@ origin 下，注入面才覆盖得到它的鉴权：
   `accounts` 为空——绝不拿空数据冒充成功。
 - 快照是字段白名单：上游凭证形态的字段不可能进入快照，任何 key 明文都不会出现。
 
+Provider 模型目录以组绑定推理 key 的 `/v1/models` 为准。账号、分组与 Composite
+路由管理请求成功后会立即请求刷新；`modelCatalogPollMs` 负责覆盖上游缓存失效和
+旁路变更。实时请求失败或返回空目录时保留最近一次 Provider 设置，配置中的路由
+模型只作为启动回退。
+
 ## 嵌入控制台（浏览器半）
 
 本包在 node 半之外还带浏览器面，遵循 harness 客户端契约：`package.json` 的
@@ -229,15 +235,12 @@ peer）。插件调用的 harness client-runtime 面在
 - 就绪轮询未报告 sidecar 健康时，容器给出可操作状态而非白屏：由快照 `reason`
   派生的状态文案、重试动作，以及（快照携带受监督 server 端口时）「打开本地
   管理台直连」回环链接——在新标签页打开 sidecar 自带控制台（其原生登录页）。
-- 快照变为 `ready` 后，section 呈双栏（控制台 v1.2）：左栏是宿主侧的管理
-  面板——路由管理（`src/client/CompositeRoutesPanel.tsx`，数据层
-  `src/client/composite-routes.ts`：已保存路由表、添加/编辑表单、解析预览）
-  与折叠的代理管理卡片（`src/client/ProxyPanel.tsx`，数据层
-  `src/client/proxies.ts`：列表筛选、增删改、测试连接与质量检测；上游账号
-  表单的代理下拉读同一张 proxies 表，此处保存后下拉自动出现，无需刷新
-  iframe；导入/导出属 step-up 流程，不含）。全部经由同源注入代理的对应
-  端点。右栏以 iframe 嵌入同源透传 `/plugins/dsh-sub2api/ui/` 的账号管理页。
-  容器保持低频轮询，sidecar 之后停止时会翻转回回退卡片。
+- 快照变为 `ready` 后，section 通过同源透传 `/plugins/dsh-sub2api/ui/` 嵌入
+  Desktop 账号工作区。账号增删改、IP 管理与 Composite 路由全部复用 Sub2API
+  原生组件并处于同一页面。Desktop 嵌入模式去除上游应用外壳，隐藏仍按既有默认
+  值保存的高级调度与配额字段，并跟随宿主主题和语言。无边框 iframe 随文档高度
+  展开，由设置内容区统一承担纵向滚动。容器保持低频轮询，sidecar 之后停止时会
+  翻转回回退卡片。
 
 开发命令在原有基础上增加 `pnpm bundle`（tsdown）；bundle 在产物内用
 lightningcss 编译 CSS Modules，不单独发布样式表。

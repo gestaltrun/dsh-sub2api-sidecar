@@ -11,7 +11,7 @@ import { childPath, defineSyncSchema, SchemaError, StandardSchema } from './stan
 import type { SchemaIssue } from './standard-schema.ts'
 import { parseAllowedOrigin } from './trust.ts'
 
-/** One hand-declared model on the composite route. */
+/** One configured fallback model on the composite route. */
 export interface RouteModel {
   /** Model id sent on the wire and shown to model selectors. */
   id: string
@@ -50,7 +50,7 @@ export interface RawSidecarConfig {
   }
   /** Composite group settings. */
   group?: { name?: string; description?: string }
-  /** The single hand-declared provider route written into `llm-pi-ai`. */
+  /** The provider route written into `llm-pi-ai`. */
   route?: {
     /** Provider route key in the `llm-pi-ai` providers dict. */
     name?: string
@@ -58,7 +58,7 @@ export interface RawSidecarConfig {
     api?: string
     /** Display name for configuration surfaces. */
     displayName?: string
-    /** Model list advertised on the route; at least one entry is required. */
+    /** Fallback model list used until the live Sub2API gateway reports models; at least one entry is required. */
     models?: RouteModel[]
   }
   /** Redis placement; the darwin pack ships a loud stub, so darwin needs `skip` plus an external Redis. */
@@ -86,6 +86,8 @@ export interface RawSidecarConfig {
   }
   /** Interval between quota snapshot polls of the sidecar admin API. */
   quotaPollMs?: number
+  /** Interval between live gateway model-catalog refreshes. */
+  modelCatalogPollMs?: number
 }
 
 /** Resolved configuration: every field present, validated, and defaulted. */
@@ -112,7 +114,7 @@ export interface SidecarConfig {
   compliance: { acceptOnBoot: boolean }
   /** Composite group settings. */
   group: { name: string; description: string }
-  /** The single hand-declared provider route. */
+  /** The provider route and its configured fallback model catalog. */
   route: {
     name: string
     api: string
@@ -137,6 +139,8 @@ export interface SidecarConfig {
   }
   /** Interval between quota snapshot polls. */
   quotaPollMs: number
+  /** Interval between live gateway model-catalog refreshes. */
+  modelCatalogPollMs: number
 }
 
 /** Lowest port the default scan range starts at. */
@@ -187,6 +191,9 @@ export const DEFAULT_PROXY_TIMEOUT_MS = 30_000
 /** Default interval between quota snapshot polls. */
 export const DEFAULT_QUOTA_POLL_MS = 60_000
 
+/** Default interval between live gateway model-catalog refreshes. */
+export const DEFAULT_MODEL_CATALOG_POLL_MS = 5_000
+
 /**
  * The conventional local Redis endpoint. It defaults a configured external
  * endpoint's missing fields and is the target sub2api points at when the
@@ -200,7 +207,7 @@ const REF_PATTERN = /^[A-Za-z_][A-Za-z0-9_]*$/
 /** Provider route key: lowercase letter first so it is also a credential-ref stem. */
 const ROUTE_PATTERN = /^[a-z][a-z0-9-]*$/
 
-/** pi-ai wire protocols a hand-declared route may name. */
+/** pi-ai wire protocols the configured provider route may name. */
 const ROUTE_APIS = new Set(['openai-completions', 'openai-responses', 'anthropic-messages'])
 
 const DEFAULT_ROUTE_MODELS: readonly RouteModel[] = [
@@ -385,6 +392,7 @@ function validateRaw(ctx: ValidateContext, path: ReadonlyArray<PropertyKey>, val
   }
 
   expectPositiveInt(ctx, childPath(path, 'quotaPollMs'), raw['quotaPollMs'])
+  expectPositiveInt(ctx, childPath(path, 'modelCatalogPollMs'), raw['modelCatalogPollMs'])
 
   return raw as RawSidecarConfig
 }
@@ -464,6 +472,7 @@ export function resolveConfig(raw: RawSidecarConfig, env: NodeJS.ProcessEnv): Si
       timeoutMs: raw.proxy?.timeoutMs ?? DEFAULT_PROXY_TIMEOUT_MS,
     },
     quotaPollMs: raw.quotaPollMs ?? DEFAULT_QUOTA_POLL_MS,
+    modelCatalogPollMs: raw.modelCatalogPollMs ?? DEFAULT_MODEL_CATALOG_POLL_MS,
   }
 }
 

@@ -61,6 +61,8 @@ export interface UiProxyOptions {
   readonly logger: LoggerLike
   /** The live sidecar port source. */
   readonly sidecar: { readonly port: number | undefined }
+  /** Notify catalog ownership after one successful admin mutation. */
+  readonly onCatalogMutation?: () => void
 }
 
 /** One registered passthrough instance. */
@@ -256,6 +258,9 @@ async function handle(
   }
 
   const responseHeaders = relayResponseHeaders(upstream)
+  if (adminPlane && upstream.ok && req.method !== 'GET' && req.method !== 'HEAD') {
+    options.onCatalogMutation?.()
+  }
   const contentType = upstream.headers.get('content-type') ?? ''
   if (req.method !== 'HEAD' && contentType.startsWith('text/html')) {
     clearTimeout(timer)

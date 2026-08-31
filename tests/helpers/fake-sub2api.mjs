@@ -55,7 +55,7 @@ function loadState() {
   try {
     return JSON.parse(fs.readFileSync(statePath, 'utf8'))
   } catch {
-    return { adminKey: null, jwt: null, groups: [], keys: [], regenerateCount: 0, loginCount: 0, accounts: [], quotaRoutes: {}, complianceAck: null, compositeRoutes: [{ id: 1, public_model: 'v12-probe', match_type: 'exact', endpoint: 'any', target_platform: 'kimi', priority: 100, enabled: true }] }
+    return { adminKey: null, jwt: null, groups: [], keys: [], regenerateCount: 0, loginCount: 0, accounts: [], quotaRoutes: {}, complianceAck: null, models: ['v12-probe'], compositeRoutes: [{ id: 1, public_model: 'v12-probe', match_type: 'exact', endpoint: 'any', target_platform: 'kimi', priority: 100, enabled: true }] }
   }
 }
 function saveState(state) {
@@ -133,7 +133,7 @@ const server = http.createServer((req, res) => {
         send(res, 401, { code: 'INVALID_API_KEY', message: 'Invalid API key' })
         return
       }
-      ok(res, [{ id: 'claude-sonnet-4-5-20250929' }])
+      ok(res, (state.models ?? []).map((id) => ({ id })))
       return
     } else {
       send(res, 404, { code: 'NOT_FOUND', message: `no route: ${req.method} ${path}` })

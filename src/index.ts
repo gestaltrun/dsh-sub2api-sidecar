@@ -12,8 +12,8 @@
  * redis-server (or a configured skip/external endpoint), the pinned sub2api
  * binary in `RUN_MODE=simple` bound to 127.0.0.1, the `/health` poll, the
  * idempotent dual-key bootstrap (`admin-` management key and `sk-` composite
- * inference key stored through the credentials seam), and the hand-declared
- * composite route written into the `llm-pi-ai` settings namespace. After a
+ * inference key stored through the credentials seam), and the live gateway
+ * model catalog written into the `llm-pi-ai` settings namespace. After a
  * healthy boot it registers the admin proxy prefix
  * (`/plugins/dsh-sub2api/admin` → sidecar `/api/v1/*` with the injected
  * `x-api-key`), the embedded-console passthrough
@@ -33,6 +33,7 @@
 import { resolveConfig } from './config.ts'
 import type { RawSidecarConfig, SidecarConfig } from './config.ts'
 import { QuotaSnapshotService, registerQuotaSnapshotRoute } from './quota-snapshot.ts'
+import { ProviderModelCatalogService } from './model-catalog.ts'
 import { registerAdminProxy } from './proxy.ts'
 import { registerUiProxy } from './ui-proxy.ts'
 import { Supervisor } from './supervisor.ts'
@@ -56,6 +57,8 @@ export type { UiProxyOptions, UiProxyRegistration } from './ui-proxy.ts'
 export { transformUiHtml } from './ui-html.ts'
 export { UI_EMBED_SHIM } from './ui-shim.ts'
 export { QUOTA_SNAPSHOT_PATH, QuotaSnapshotService, registerQuotaSnapshotRoute } from './quota-snapshot.ts'
+export { ProviderModelCatalogService } from './model-catalog.ts'
+export type { ProviderModelCatalogOptions } from './model-catalog.ts'
 export type {
   AccountQuota,
   LocalDerivedQuota,
@@ -130,12 +133,29 @@ function mountHostServices(ctx: PluginContext, config: SidecarConfig, supervisor
     return
   }
   const sidecar = { get port(): number | undefined { return supervisor.sidecarPort } }
+  const catalog = new ProviderModelCatalogService({
+    config,
+    credentials: ctx.credentials,
+    settings: ctx.settings,
+    logger: ctx.logger,
+    sidecar,
+  })
+  const refreshCatalog = (): void => {
+    void catalog.refresh().catch((error) => {
+      ctx.logger.warn(
+        'dsh-sub2api-sidecar: provider model catalog refresh after admin mutation failed (%s)',
+        error instanceof Error ? error.message : String(error),
+      )
+    })
+  }
+  ctx.effect(() => () => catalog.dispose())
   const proxy = registerAdminProxy({
     config,
     webServer: ctx.webServer,
     credentials: ctx.credentials,
     logger: ctx.logger,
     sidecar,
+    onCatalogMutation: refreshCatalog,
   })
   ctx.effect(() => () => proxy.dispose())
   const ui = registerUiProxy({
@@ -144,6 +164,7 @@ function mountHostServices(ctx: PluginContext, config: SidecarConfig, supervisor
     credentials: ctx.credentials,
     logger: ctx.logger,
     sidecar,
+    onCatalogMutation: refreshCatalog,
   })
   ctx.effect(() => () => ui.dispose())
   const quota = new QuotaSnapshotService({
@@ -159,5 +180,6 @@ function mountHostServices(ctx: PluginContext, config: SidecarConfig, supervisor
     quota,
   )
   ctx.effect(() => () => disposeSnapshotRoute())
+  catalog.start()
   quota.start()
 }

@@ -13,7 +13,7 @@
           skip: true
         route:
           models:
-            # The composite group serves whatever models its channels expose;
-            # adjust this list to the models your sub2api deployment relays.
+            # Boot fallback only. The running provider replaces this list with
+            # the models served by the group-bound Sub2API gateway key.
             - id: claude-sonnet-4-5-20250929
               name: Claude Sonnet 4.5

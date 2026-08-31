@@ -27,6 +27,7 @@ describe('config schema', () => {
     expect(resolved.proxy.allowedOrigins).toEqual([])
     expect(resolved.proxy.timeoutMs).toBe(30_000)
     expect(resolved.quotaPollMs).toBe(60_000)
+    expect(resolved.modelCatalogPollMs).toBe(5_000)
   })
 
   it('rejects unknown-shape values with named paths', () => {
@@ -54,6 +55,8 @@ describe('config schema', () => {
     expect(timeout.issues?.[0]?.path).toEqual(['proxy', 'timeoutMs'])
     const poll = Config['~standard'].validate({ quotaPollMs: 1.5 })
     expect(poll.issues?.[0]?.path).toEqual(['quotaPollMs'])
+    const catalogPoll = Config['~standard'].validate({ modelCatalogPollMs: 1.5 })
+    expect(catalogPoll.issues?.[0]?.path).toEqual(['modelCatalogPollMs'])
   })
 
   it('rejects an empty model list and an unsupported wire protocol', () => {
@@ -85,9 +88,11 @@ describe('resolveConfig', () => {
     const resolved = resolveConfig({
       proxy: { enabled: false, allowedOrigins: ['https://desktop.example/'], timeoutMs: 5_000 },
       quotaPollMs: 1_000,
+      modelCatalogPollMs: 2_000,
     }, { DSH_HOME: '/tmp/home' })
     expect(resolved.proxy).toEqual({ enabled: false, allowedOrigins: ['https://desktop.example'], timeoutMs: 5_000 })
     expect(resolved.quotaPollMs).toBe(1_000)
+    expect(resolved.modelCatalogPollMs).toBe(2_000)
   })
 
   it('honors every override it accepts', () => {
