@@ -121,6 +121,10 @@ export interface WorldOptions {
   healthFails?: boolean
   /** Delay the fake sub2api SIGTERM handler before it records shutdown. */
   shutdownDelayMs?: number
+  /** Delay fake PostgreSQL listener startup to expose reload/teardown overlap. */
+  postgresStartDelayMs?: number
+  /** Delay fake PostgreSQL SIGTERM completion to expose generation handoff. */
+  postgresShutdownDelayMs?: number
   /** Arm the fake upstream's administrator compliance gate (423 until acknowledged). */
   complianceRequired?: boolean
   /** Config overrides layered onto the defaults. */
@@ -203,6 +207,12 @@ exit 0
   await fs.writeFile(path.join(binDir, 'postgres'), [
     '#!/bin/sh',
     `FAKE_STATE_DIR='${stateDir}' \\`,
+    ...(options.postgresStartDelayMs === undefined
+      ? []
+      : [`FAKE_POSTGRES_START_DELAY_MS='${String(options.postgresStartDelayMs)}' \\`]),
+    ...(options.postgresShutdownDelayMs === undefined
+      ? []
+      : [`FAKE_POSTGRES_SHUTDOWN_DELAY_MS='${String(options.postgresShutdownDelayMs)}' \\`]),
     `exec '${node}' '${path.join(helpersDir, 'fake-postgres.mjs')}' "$@"`,
     '',
   ].join('\n'), { mode: 0o755 })
