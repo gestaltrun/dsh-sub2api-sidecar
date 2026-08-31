@@ -12,7 +12,7 @@ import { act } from 'react'
 import { createRoot } from 'react-dom/client'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { apply, inject } from '../src/client/index.ts'
-import { describeReason, EMBED_ROUTE, EMBED_SRC, formatSnapshotTime, hostTheme, readReadiness, Sub2apiSection } from '../src/client/Sub2apiSection.tsx'
+import { describeReason, EMBED_ROUTE, EMBED_SRC, embedUrl, hostLocale, hostTheme, readReadiness, Sub2apiSection } from '../src/client/Sub2apiSection.tsx'
 import { en, zh, type SectionKeys } from '../src/client/locales.ts'
 import type { ClientContext } from '@deepseek-ai/dsh-client-runtime/client'
 
@@ -98,12 +98,10 @@ describe('registration', () => {
 })
 
 describe('readiness derivation', () => {
-  it('maps a ready snapshot to the ready phase with the toolbar data', async () => {
+  it('maps a ready snapshot to the ready phase', async () => {
     const fetchImpl = vi.fn(async () =>
       Response.json({ status: 'ready', generatedAt: '2026-08-28T03:04:05.000Z', accounts: [1, 2, 3] }))
-    expect(await readReadiness(fetchImpl as unknown as typeof fetch)).toEqual({
-      phase: 'ready', accountCount: 3, snapshotAt: '2026-08-28T03:04:05.000Z',
-    })
+    expect(await readReadiness(fetchImpl as unknown as typeof fetch)).toEqual({ phase: 'ready' })
   })
 
   it('carries the unavailability reason and the sidecar port', async () => {
@@ -169,39 +167,37 @@ describe('section component', () => {
     const view = await renderSection()
     try {
       const frame = view.container.querySelector('iframe')
-      expect(frame?.getAttribute('src')).toBe(`${EMBED_SRC}${EMBED_ROUTE}?theme=${hostTheme()}`)
+      expect(frame?.getAttribute('src')).toBe(`${EMBED_SRC}${EMBED_ROUTE}?embed=desktop&theme=${hostTheme()}&lang=${hostLocale()}`)
       expect(frame?.getAttribute('title')).toBe('订阅转 API')
     } finally {
       await view.unmount()
     }
   })
 
-  it('renders the slim toolbar with the account count, snapshot time, and the new-window action', async () => {
+  it('renders only the native account surface without a host toolbar or route panel', async () => {
     vi.stubGlobal('fetch', vi.fn(async () =>
       Response.json({ status: 'ready', generatedAt: '2026-08-28T11:46:17.347Z', accounts: [{}, {}] })))
     const view = await renderSection()
     try {
-      const summary = view.container.querySelector('span')
-      expect(summary?.textContent).toBe(`共 2 个账号 · 快照 ${formatSnapshotTime('2026-08-28T11:46:17.347Z')}`)
-      expect(formatSnapshotTime('2026-08-28T11:46:17.347Z')).toMatch(/^\d{2}:\d{2}$/)
-      const open = view.container.querySelector('a')
-      expect(open?.textContent).toBe('在新窗口打开')
-      expect(open?.getAttribute('href')).toBe(`${EMBED_SRC}${EMBED_ROUTE}?theme=${hostTheme()}`)
-      expect(open?.getAttribute('target')).toBe('_blank')
       const frame = view.container.querySelector('iframe')
-      expect(frame?.getAttribute('src')).toBe(open?.getAttribute('href'))
-      // The toolbar strip sits above the two-column body, which holds the
-      // route panel and the console frame.
-      const body = open?.parentElement?.nextSibling as HTMLElement | null
-      expect(body?.querySelector('iframe')).toBe(frame)
-      expect(body?.querySelector('aside')).not.toBeNull()
+      expect(frame).not.toBeNull()
+      expect(view.container.querySelector('aside')).toBeNull()
+      expect(view.container.querySelector('a')).toBeNull()
+      expect(view.container.textContent).not.toContain('快照')
     } finally {
       await view.unmount()
     }
   })
 
-  it('passes the host color scheme through to the embed URL', async () => {
+  it('passes the host theme and locale through to the Desktop account embed URL', async () => {
     expect(hostTheme()).toBe('light') // jsdom has no matchMedia; the fallback is light
+    expect(hostLocale()).toBe('en')
+    document.documentElement.lang = 'zh-CN'
+    document.documentElement.classList.add('dark')
+    expect(hostTheme()).toBe('dark')
+    expect(hostLocale()).toBe('zh')
+    expect(embedUrl()).toBe(`${EMBED_SRC}${EMBED_ROUTE}?embed=desktop&theme=dark&lang=zh`)
+    document.documentElement.classList.remove('dark')
     window.matchMedia = ((query: string) => ({
       matches: query === '(prefers-color-scheme: dark)',
       media: query,
@@ -214,12 +210,34 @@ describe('section component', () => {
         Response.json({ status: 'ready', accounts: [] })))
       const view = await renderSection()
       try {
-        expect(view.container.querySelector('iframe')?.getAttribute('src')).toBe(`${EMBED_SRC}${EMBED_ROUTE}?theme=dark`)
+        expect(view.container.querySelector('iframe')?.getAttribute('src')).toBe(`${EMBED_SRC}${EMBED_ROUTE}?embed=desktop&theme=dark&lang=zh`)
       } finally {
         await view.unmount()
       }
     } finally {
+      document.documentElement.lang = ''
       delete (window as { matchMedia?: unknown }).matchMedia
+    }
+  })
+
+  it('reloads the native account surface when Desktop theme or language changes', async () => {
+    document.documentElement.style.colorScheme = 'light'
+    document.documentElement.lang = 'en'
+    vi.stubGlobal('fetch', vi.fn(async () => Response.json({ status: 'ready' })))
+    const view = await renderSection()
+    try {
+      const frame = view.container.querySelector('iframe')
+      expect(frame?.getAttribute('src')).toBe(`${EMBED_SRC}${EMBED_ROUTE}?embed=desktop&theme=light&lang=en`)
+      await act(async () => {
+        document.documentElement.style.colorScheme = 'dark'
+        document.documentElement.lang = 'zh-CN'
+        await new Promise((resolve) => { setTimeout(resolve, 0) })
+      })
+      expect(frame?.getAttribute('src')).toBe(`${EMBED_SRC}${EMBED_ROUTE}?embed=desktop&theme=dark&lang=zh`)
+    } finally {
+      document.documentElement.style.colorScheme = ''
+      document.documentElement.lang = ''
+      await view.unmount()
     }
   })
 

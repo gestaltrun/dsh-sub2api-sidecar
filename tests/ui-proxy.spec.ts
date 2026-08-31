@@ -302,6 +302,16 @@ describe('embed shim execution', () => {
     expect(runShim('?theme=blue').storage.get('theme')).toBeUndefined()
   })
 
+  it('writes the Desktop locale from ?lang= into upstream locale storage', () => {
+    expect(runShim('?lang=zh').storage.get('sub2api_locale')).toBe('zh')
+    expect(runShim('?lang=en').storage.get('sub2api_locale')).toBe('en')
+    expect(runShim('?lang=ja').storage.get('sub2api_locale')).toBeUndefined()
+    const { storage, replacedUrl } = runShim('?embed=desktop&theme=dark&lang=zh')
+    expect(storage.get('theme')).toBe('dark')
+    expect(storage.get('sub2api_locale')).toBe('zh')
+    expect(replacedUrl).toBe('/admin/accounts?embed=desktop&theme=dark&lang=zh')
+  })
+
   it('keeps an existing session and still pins the onboarding flag', () => {
     const { storage } = runShim('', { auth_token: 'kept', admin_guide_0_admin_v4_interactive: 'true' })
     expect(storage.get('auth_token')).toBe('kept')

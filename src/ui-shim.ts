@@ -75,15 +75,17 @@ export const UI_EMBED_SHIM = `(function () {
   var PREFIX = ${JSON.stringify(UI_PREFIX)}
   var MASK_CSS = ${JSON.stringify(UI_EMBED_MASK_CSS)}
   var SESSION_TOKEN = 'dsh-embedded-session'
-  // The host section passes its current theme as ?theme=light|dark on the
-  // iframe URL. Read it before the history rewrite below, and write
-  // upstream's theme storage (localStorage 'theme' = 'light'|'dark', read by
-  // upstream's initThemeClass before the app mounts) so the embedded console
-  // follows the host theme instead of the OS default.
+  // The host section passes its current theme and locale on the iframe URL.
+  // Read them before the history rewrite below and write the upstream storage
+  // keys before its app mounts.
   var themeMatch = /[?&]theme=(light|dark)(?=&|$)/.exec(location.search)
+  var langMatch = /[?&]lang=(zh|en)(?=&|$)/.exec(location.search)
   try {
     if (themeMatch && window.localStorage) {
       window.localStorage.setItem('theme', themeMatch[1])
+    }
+    if (langMatch && window.localStorage) {
+      window.localStorage.setItem('sub2api_locale', langMatch[1])
     }
   } catch (_) {}
   // The upstream router is built with the absolute base '/' (baked at its

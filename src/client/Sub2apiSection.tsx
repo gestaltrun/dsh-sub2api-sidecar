@@ -4,12 +4,11 @@
  * readiness poll (the quota snapshot, an existing host-side surface) has not
  * reported a healthy sidecar, the container shows an actionable state —
  * status copy, a retry action, and the loopback direct-console link — instead
- * of a blank frame; once ready, the section splits into two columns: the
- * host-side composite-route panel on the left, the console iframe on the
- * right.
+ * of a blank frame. Once ready, the section contains only the native Sub2API
+ * account surface; proxy and Composite-route management are composed by that
+ * surface instead of duplicated in the host plugin.
  */
 import { useCallback, useEffect, useRef, useState } from 'react'
-import { CompositeRoutesPanel } from './CompositeRoutesPanel.tsx'
 import css from './Sub2apiSection.module.css'
 
 /** The section component's props: the standard locale seat of the slot share. */
@@ -41,7 +40,7 @@ export const SETTLED_POLL_MS = 30_000
 /** The container's readiness, derived from the snapshot surface. */
 export type EmbedReadiness =
   | { readonly phase: 'checking' }
-  | { readonly phase: 'ready'; readonly accountCount: number; readonly snapshotAt: string | undefined }
+  | { readonly phase: 'ready' }
   | { readonly phase: 'unavailable'; readonly reason: string; readonly sidecarPort: number | undefined }
 
 /** The subset of the snapshot payload the container reads. */
@@ -49,8 +48,6 @@ interface SnapshotView {
   readonly status: string
   readonly reason?: string
   readonly sidecarPort?: number
-  readonly generatedAt?: string
-  readonly accounts?: readonly unknown[]
 }
 
 /**
@@ -68,11 +65,7 @@ export async function readReadiness(fetchImpl: typeof fetch = fetch): Promise<Em
     return { phase: 'unavailable', reason: 'unreachable', sidecarPort: undefined }
   }
   if (payload?.status === 'ready') {
-    return {
-      phase: 'ready',
-      accountCount: Array.isArray(payload.accounts) ? payload.accounts.length : 0,
-      snapshotAt: typeof payload.generatedAt === 'string' ? payload.generatedAt : undefined,
-    }
+    return { phase: 'ready' }
   }
   return {
     phase: 'unavailable',
@@ -97,12 +90,15 @@ export function describeReason(reason: string, t: (key: string) => string): stri
 }
 
 /**
- * The host's current color scheme. The host shell follows the OS setting
- * through its alias tokens, so `prefers-color-scheme` is the authoritative
- * signal; light is the fallback when matchMedia is unavailable.
+ * The host's current color scheme. The Desktop theme presenter writes the
+ * active scheme onto the root element; the media query remains the boot-time
+ * fallback before the presenter activates.
  * @returns 'dark' or 'light'.
  */
 export function hostTheme(): 'light' | 'dark' {
+  const presented = document.documentElement.style.colorScheme
+  if (presented === 'dark' || presented === 'light') return presented
+  if (document.documentElement.classList.contains('dark')) return 'dark'
   try {
     return window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light'
   } catch {
@@ -111,36 +107,58 @@ export function hostTheme(): 'light' | 'dark' {
 }
 
 /**
- * The console embed URL for the current host theme. The `theme` query is
- * consumed by the passthrough shim, which writes upstream's theme storage
- * before the upstream app boots.
+ * Map the Desktop document language onto the locales Sub2API ships.
+ * @returns 'zh' for Chinese Desktop locales, otherwise 'en'.
+ */
+export function hostLocale(): 'zh' | 'en' {
+  return document.documentElement.lang.toLowerCase().startsWith('zh') ? 'zh' : 'en'
+}
+
+/**
+ * The native account embed URL for the current host theme and locale. The
+ * `embed` query enables the Desktop-only composition points in Sub2API; the
+ * other queries are consumed by the passthrough shim before the app boots.
  * @returns the host-relative iframe URL.
  */
 export function embedUrl(): string {
-  return `${EMBED_SRC}${EMBED_ROUTE}?theme=${hostTheme()}`
+  return `${EMBED_SRC}${EMBED_ROUTE}?embed=desktop&theme=${hostTheme()}&lang=${hostLocale()}`
+}
+
+/** Follow live Desktop theme and locale changes by replacing the iframe URL. */
+function useEmbedUrl(): string {
+  const [url, setUrl] = useState(embedUrl)
+  useEffect(() => {
+    const sync = (): void => {
+      const next = embedUrl()
+      setUrl((current) => next === current ? current : next)
+    }
+    const observer = new MutationObserver(sync)
+    observer.observe(document.documentElement, { attributes: true, attributeFilter: ['class', 'style', 'lang'] })
+    let media: MediaQueryList | undefined
+    try {
+      media = window.matchMedia('(prefers-color-scheme: dark)')
+      media.addEventListener('change', sync)
+    } catch {
+      media = undefined
+    }
+    sync()
+    return () => {
+      observer.disconnect()
+      media?.removeEventListener('change', sync)
+    }
+  }, [])
+  return url
 }
 
 /**
- * Format the snapshot's generation time as HH:mm for the toolbar.
- * @param iso - the snapshot's `generatedAt`.
- * @returns the local HH:mm, or an empty string for a missing/invalid time.
- */
-export function formatSnapshotTime(iso: string | undefined): string {
-  if (iso === undefined) return ''
-  const date = new Date(iso)
-  if (Number.isNaN(date.getTime())) return ''
-  const pad = (value: number): string => String(value).padStart(2, '0')
-  return `${pad(date.getHours())}:${pad(date.getMinutes())}`
-}
-
-/**
- * Render the section content: the slim toolbar plus the console embed, or
- * the actionable fallback card while the sidecar is not ready.
+ * Render the native console embed or the actionable fallback card while the
+ * sidecar is not ready.
  * @param props - the section props (locale seat).
  * @returns the section element tree.
  */
 export function Sub2apiSection({ t }: Sub2apiSectionProps) {
   const [readiness, setReadiness] = useState<EmbedReadiness>({ phase: 'checking' })
+  const url = useEmbedUrl()
   const timer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined)
   const disposed = useRef(false)
 
@@ -167,21 +185,9 @@ export function Sub2apiSection({ t }: Sub2apiSectionProps) {
   }, [poll])
 
   if (readiness.phase === 'ready') {
-    const url = embedUrl()
     return (
       <div className={css.container}>
-        <div className={css.toolbar}>
-          <span className={css.toolbarMeta}>
-            {t('toolbarSummary')
-              .replace('{count}', String(readiness.accountCount))
-              .replace('{time}', formatSnapshotTime(readiness.snapshotAt))}
-          </span>
-          <a className={css.openExternal} href={url} target="_blank" rel="noreferrer">{t('openExternal')}</a>
-        </div>
-        <div className={css.body}>
-          <CompositeRoutesPanel t={t} />
-          <iframe className={css.frame} src={url} title={t('nav')} />
-        </div>
+        <iframe className={css.frame} src={url} title={t('nav')} />
       </div>
     )
   }
