@@ -22,6 +22,7 @@ runtime-pack-<sub2api-ver>-<os>-<arch>.tar.gz
 ├── share/
 │   ├── config.template.yaml run_mode=simple、绑定 127.0.0.1；数据落在
 │   │                        $DSH_HOME/sub2api/data，与本包分离
+│   ├── runtime-provenance.json 精确的 Sub2API 源码引用与二进制 SHA256
 │   └── postgresql/          PostgreSQL 时区与扩展元数据
 └── SHA256SUMS
 ```
@@ -30,7 +31,10 @@ runtime-pack-<sub2api-ver>-<os>-<arch>.tar.gz
 
 - **Sub2API** — `Wei-Shaw/sub2api` GitHub Release 的官方 goreleaser 产物，版本
   在 lock 文件钉住；`--sub2api-version` 可覆盖 pin，此时信任该 Release 自带的
-  `checksums.txt`。
+  `checksums.txt`。产品分支也可用 `--sub2api-binary` 配合不可变的
+  `--sub2api-source-ref repository@commit` 提供精确构建的二进制；运行包会记录
+  该来源和二进制哈希。只有 Sub2API 发生变化时，`--base-runtime-pack` 可复用旧包
+  中已验证的 PostgreSQL/Redis 文件树。
 - **PostgreSQL** — `zonky/embedded-postgres-binaries` 在 Maven Central 的产物
   （PG 17.x）：唯一同时覆盖 darwin arm64/amd64、带校验和、持续维护的发行。
 - **Redis** — 当前不存在官方或可信的 darwin 便携二进制（Homebrew bottle 依赖
