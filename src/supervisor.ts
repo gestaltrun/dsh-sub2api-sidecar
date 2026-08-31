@@ -2,7 +2,7 @@
  * The supervisor: one boot of the whole sidecar chain — directories, initdb,
  * postgres, redis, sub2api, health, bootstrap, llm-pi-ai profile — and the
  * dispose ladder that stops it. Instances are refcounted per resolved
- * runtime dir on a globalThis-keyed registry, so a double mount or an HMR
+ * runtime dir on a process-wide registry, so a double mount or an HMR
  * reload cannot start a second process set behind one runtime dir, and the
  * chain stops only when the last owner releases.
  *
@@ -44,7 +44,7 @@ export interface SupervisorOptions {
   readonly seams: Seams
 }
 
-/** Refcounted registry entry behind the globalThis key. */
+/** Refcounted registry entry behind the process-wide symbol key. */
 interface RegistryEntry {
   readonly supervisor: Supervisor
   readonly releaseRef: () => void
@@ -54,18 +54,19 @@ interface RegistryEntry {
 
 /**
  * Cross-HMR registry. Module re-instantiation (Cordis HMR) gives the plugin a
- * fresh module scope, so the registry lives on `globalThis` under a symbol to
- * remain authoritative for the process lifetime.
+ * fresh module scope and an isolated realm may have a distinct `globalThis`,
+ * so the registry lives on the shared Node process under a symbol to remain
+ * authoritative for the process lifetime.
  */
 const REGISTRY_KEY = Symbol.for('dsh-sub2api-sidecar/supervisors')
 
 /** Read or create the process-wide registry. */
 function registry(): Map<string, RegistryEntry> {
-  const globalRegistry = globalThis as unknown as Record<symbol, Map<string, RegistryEntry> | undefined>
-  const existing = globalRegistry[REGISTRY_KEY]
+  const processRegistry = process as unknown as Record<symbol, Map<string, RegistryEntry> | undefined>
+  const existing = processRegistry[REGISTRY_KEY]
   if (existing) return existing
   const created = new Map<string, RegistryEntry>()
-  globalRegistry[REGISTRY_KEY] = created
+  processRegistry[REGISTRY_KEY] = created
   return created
 }
 
