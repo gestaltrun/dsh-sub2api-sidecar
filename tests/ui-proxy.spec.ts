@@ -325,10 +325,9 @@ describe('embed shell mask (v1.2 S1/S2)', () => {
     // margin is released through the sidebar's sibling.
     expect(UI_EMBED_MASK_CSS).toContain('aside.sidebar{display:none!important}')
     expect(UI_EMBED_MASK_CSS).toContain('.sidebar~div{margin-left:0!important}')
-    // The drawer toggle and the topbar user menu are matched structurally,
-    // never by locale-dependent text.
-    expect(UI_EMBED_MASK_CSS).toContain('header button.lg\\:hidden{display:none!important}')
-    expect(UI_EMBED_MASK_CSS).toContain('header div.relative:has(>button .bg-gradient-to-br){display:none!important}')
+    // Desktop owns the surrounding title and language, so the whole upstream
+    // header is absent rather than selectively masking its controls.
+    expect(UI_EMBED_MASK_CSS).toContain('header{display:none!important}')
     // The account form's group picker hides behind its build-stable tour key.
     expect(UI_EMBED_MASK_CSS).toContain('[data-tour="account-form-groups"]{display:none!important}')
   })

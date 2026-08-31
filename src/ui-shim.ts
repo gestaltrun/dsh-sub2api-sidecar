@@ -16,14 +16,11 @@
  *
  * 1. Shell masking (spec S1): one `<style>` narrows the embed to the
  *    account-management content area — the upstream sidebar (including its
- *    bottom 我的账户 group), the sidebar toggle, and the topbar user menu
- *    (its entries all leave the accounts page) are hidden, and the content
- *    column's sidebar margin is released. The selectors are structural
- *    (`aside.sidebar`, the toggle's `lg:hidden` class, the avatar gradient
- *    inside the user-menu trigger) so they survive upstream's locale
- *    switch; the same mask applies on deep links because the shim runs on
- *    every passthrough page. `style-src 'unsafe-inline'` in upstream's CSP
- *    permits the injected tag.
+ *    bottom 我的账户 group) and the complete upstream header are hidden, and
+ *    the content column's sidebar margin is released. Desktop owns the outer
+ *    title, status, lifecycle actions, theme, and locale. The same mask
+ *    applies on deep links because the shim runs on every passthrough page.
+ *    `style-src 'unsafe-inline'` in upstream's CSP permits the injected tag.
  * 2. Composite-group auto-join (spec S2): the fetch/XHR wrappers intercept
  *    account create (`POST /api/v1/admin/accounts`) and update
  *    (`PUT /api/v1/admin/accounts/<id>`) JSON bodies and merge the composite
@@ -59,12 +56,8 @@ export const UI_EMBED_MASK_CSS = [
   'aside.sidebar{display:none!important}',
   // Release the content column's sidebar margin (`lg:ml-64` on the wrapper).
   '.sidebar~div{margin-left:0!important}',
-  // The sidebar drawer toggle (the only `lg:hidden` button in the topbar).
-  'header button.lg\\:hidden{display:none!important}',
-  // The topbar user menu: its trigger is the only topbar cluster whose
-  // button wraps the brand-gradient avatar; its entries (个人资料 / API 密钥 /
-  // 退出登录) all leave the accounts page.
-  'header div.relative:has(>button .bg-gradient-to-br){display:none!important}',
+  // Desktop owns the surrounding title, status, theme, and locale controls.
+  'header{display:none!important}',
   // The add/edit account form's group picker; the shim's body rewrite below
   // is what keeps group membership correct while the control is hidden.
   '[data-tour="account-form-groups"]{display:none!important}',
