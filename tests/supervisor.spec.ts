@@ -113,6 +113,30 @@ describe('supervisor happy path', () => {
     expect(await bootLines(world.stateDir, 'initdb-calls.log')).toHaveLength(1)
     await expect(fs.access(path.join(world.config.runtimeDir, 'data', 'pg', 'PG_VERSION'))).resolves.toBeUndefined()
   })
+
+  it('waits for a starting generation to stop before a reload acquires the runtime', { timeout: 40_000 }, async () => {
+    const { world, ctx } = useWorld(await createWorld({
+      postgresStartDelayMs: 1_000,
+      postgresShutdownDelayMs: 1_000,
+    }))
+    const firstBoot = apply(ctx, world.rawConfig)
+    await expect.poll(async () => await bootLines(world.stateDir, 'postgres-boots.log'), {
+      timeout: 5_000,
+    }).toHaveLength(1)
+
+    const stopping = Promise.resolve(world.effects[0]?.()())
+    const reload = apply(ctx, world.rawConfig)
+    const reloadOutcome = reload.then(
+      () => ({ ok: true as const }),
+      error => ({ ok: false as const, error: error as unknown }),
+    )
+
+    await expect(firstBoot).rejects.toThrow(/cancelled|aborted/i)
+    await stopping
+    expect(await readTextOrNull(path.join(world.stateDir, 'postgres-stopped'))).not.toBeNull()
+    expect(await reloadOutcome).toEqual({ ok: true })
+    expect(await bootLines(world.stateDir, 'postgres-boots.log')).toHaveLength(2)
+  })
 })
 
 describe('health failure refusal', () => {

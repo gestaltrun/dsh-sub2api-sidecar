@@ -11,9 +11,14 @@ if (!Number.isSafeInteger(port)) throw new Error('fake postgres requires -c port
 
 fs.appendFileSync(`${stateDir}/postgres-boots.log`, `${process.pid}\n`)
 const server = net.createServer(socket => { socket.end() })
-server.listen(port, '127.0.0.1')
+const startDelayMs = Number(process.env.FAKE_POSTGRES_START_DELAY_MS ?? '0')
+setTimeout(() => { server.listen(port, '127.0.0.1') }, startDelayMs)
 process.on('SIGTERM', () => {
-  fs.writeFileSync(`${stateDir}/postgres-stopped`, `${process.pid}\n`)
-  server.close(() => { process.exit(0) })
-  setTimeout(() => { process.exit(0) }, 500).unref()
+  const shutdownDelayMs = Number(process.env.FAKE_POSTGRES_SHUTDOWN_DELAY_MS ?? '0')
+  setTimeout(() => {
+    fs.writeFileSync(`${stateDir}/postgres-stopped`, `${process.pid}\n`)
+    if (server.listening) server.close(() => { process.exit(0) })
+    else process.exit(0)
+    setTimeout(() => { process.exit(0) }, 500).unref()
+  }, shutdownDelayMs)
 })

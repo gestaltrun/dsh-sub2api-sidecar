@@ -11,7 +11,7 @@
 import fs from 'node:fs/promises'
 import { createConnection } from 'node:net'
 import path from 'node:path'
-import { formatBatchFailure, runBatch } from './batch.ts'
+import { formatBatchFailure, readTail, runBatch } from './batch.ts'
 import type { SubprocessHandleLike, SubprocessOutcome, SubprocessService } from './seam.ts'
 
 /** Paths and knobs the one-time cluster initialization needs. */
@@ -127,11 +127,17 @@ async function waitForPostgres(
   void handle.done.then(value => { outcome = value }, error => { outcome = error as Error })
   const deadline = Date.now() + timeoutMs
   while (Date.now() < deadline) {
-    if (signal?.aborted === true) throw new DOMException('PostgreSQL startup was cancelled', 'AbortError')
+    if (signal?.aborted === true) {
+      handle.terminate()
+      await handle.waitForExit()
+      throw new DOMException('PostgreSQL startup was cancelled', 'AbortError')
+    }
     if (outcome instanceof Error) throw outcome
     if (outcome !== undefined) {
+      const stderr = readTail(handle, 'stderr').trim()
       throw new Error(
-        `postgres exited before readiness (code ${String(outcome.exitCode)}, signal ${String(outcome.signal)})`,
+        `postgres exited before readiness (code ${String(outcome.exitCode)}, signal ${String(outcome.signal)})`
+          + (stderr.length > 0 ? `\n${stderr}` : ''),
       )
     }
     if (await acceptsConnection(port)) return

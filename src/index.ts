@@ -100,7 +100,7 @@ export async function apply(ctx: PluginContext, config: RawSidecarConfig): Promi
     ctx.logger.info('dsh-sub2api-sidecar: disabled by config; staying inert')
     return
   }
-  const { supervisor, release } = Supervisor.acquire({ config: resolved, seams: ctx })
+  const { supervisor, release } = await Supervisor.acquire({ config: resolved, seams: ctx })
   ctx.effect(() => () => release())
   try {
     await supervisor.start()

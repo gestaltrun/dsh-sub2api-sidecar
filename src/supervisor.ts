@@ -97,30 +97,39 @@ export class Supervisor {
    * @param options - resolved config and host seams.
    * @returns the supervisor and a token disposer releasing this acquisition.
    */
-  static acquire(options: SupervisorOptions): { supervisor: Supervisor; release: () => Promise<void> } {
+  static async acquire(options: SupervisorOptions): Promise<{ supervisor: Supervisor; release: () => Promise<void> }> {
     const key = options.config.runtimeDir
-    let entry = registry().get(key)
-    if (!entry) {
-      const created = new Supervisor(options)
-      entry = {
-        supervisor: created,
-        refs: 0,
-        releaseRef: () => {
-          const current = registry().get(key)
-          if (current === undefined || current.supervisor !== created) return
-          current.refs -= 1
-          if (current.refs <= 0) {
-            registry().delete(key)
-            created.stopping ??= created.dispose()
-          }
-        },
+    for (;;) {
+      let entry = registry().get(key)
+      if (entry?.supervisor.stopping !== undefined) {
+        await entry.supervisor.stopping
+        continue
       }
-      created.entry = entry
-      registry().set(key, entry)
+      if (!entry) {
+        const created = new Supervisor(options)
+        entry = {
+          supervisor: created,
+          refs: 0,
+          releaseRef: () => {
+            const current = registry().get(key)
+            if (current === undefined || current.supervisor !== created) return
+            current.refs -= 1
+            if (current.refs <= 0) {
+              created.stopping ??= created.dispose()
+              void created.stopping.finally(() => {
+                const latest = registry().get(key)
+                if (latest?.supervisor === created && latest.refs <= 0) registry().delete(key)
+              }).catch(() => {})
+            }
+          },
+        }
+        created.entry = entry
+        registry().set(key, entry)
+      }
+      entry.refs += 1
+      const supervisor = entry.supervisor
+      return { supervisor, release: () => supervisor.releaseOwned() }
     }
-    entry.refs += 1
-    const supervisor = entry.supervisor
-    return { supervisor, release: () => supervisor.releaseOwned() }
   }
 
   /** Release one acquisition; the last release stops the chain. */
@@ -268,6 +277,7 @@ export class Supervisor {
     this.abort.abort()
     const { seams, layout } = this
     const logger = seams.logger
+    await this.startPromise?.catch(() => {})
     const handles = [
       this.serverHandle,
       this.redis?.kind === 'managed' ? this.redis.handle : undefined,
