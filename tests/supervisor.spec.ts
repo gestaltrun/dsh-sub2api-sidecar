@@ -10,6 +10,7 @@ import path from 'node:path'
 import { afterAll, describe, expect, it } from 'vitest'
 import { apply } from '../src/index.ts'
 import type { PluginContext } from '../src/index.ts'
+import { Supervisor } from '../src/supervisor.ts'
 import { createWorld, readTextOrNull } from './helpers/world.ts'
 import type { World } from './helpers/world.ts'
 
@@ -136,6 +137,27 @@ describe('supervisor happy path', () => {
     expect(await readTextOrNull(path.join(world.stateDir, 'postgres-stopped'))).not.toBeNull()
     expect(await reloadOutcome).toEqual({ ok: true })
     expect(await bootLines(world.stateDir, 'postgres-boots.log')).toHaveLength(2)
+  })
+
+  it('shares one generation across filesystem aliases of the runtime directory', { timeout: 40_000 }, async () => {
+    const { world, ctx } = useWorld(await createWorld())
+    await fs.mkdir(world.config.runtimeDir, { recursive: true })
+    const runtimeAlias = path.join(world.root, 'runtime-alias')
+    await fs.symlink(world.config.runtimeDir, runtimeAlias, 'dir')
+
+    const first = await Supervisor.acquire({ config: world.config, seams: ctx })
+    const second = await Supervisor.acquire({
+      config: { ...world.config, runtimeDir: runtimeAlias },
+      seams: ctx,
+    })
+    try {
+      expect(second.supervisor).toBe(first.supervisor)
+      await Promise.all([first.supervisor.start(), second.supervisor.start()])
+      expect(await bootLines(world.stateDir, 'postgres-boots.log')).toHaveLength(1)
+    } finally {
+      await first.release()
+      await second.release()
+    }
   })
 })
 
