@@ -4,7 +4,13 @@
 // route was already written must not suppress the write when the store
 // actually lacks the route.
 import { describe, expect, it } from 'vitest'
-import { desiredProfile, writeProfile, LLM_PI_AI_NAMESPACE, type DesiredProfile } from '../src/llm-profile.ts'
+import {
+  desiredProfile,
+  reconcileProfile,
+  writeProfile,
+  LLM_PI_AI_NAMESPACE,
+  type DesiredProfile,
+} from '../src/llm-profile.ts'
 import { resolveConfig } from '../src/config.ts'
 import { FakeLogger, FakeSettings } from './helpers/world.ts'
 
@@ -15,10 +21,25 @@ const PROFILE: DesiredProfile = {
   displayName: 'Sub2API (sub2api)',
   api: 'openai-completions',
   baseURL: 'http://127.0.0.1:45101/v1',
-  models: [{ id: 'claude-sonnet-4-5-20250929', name: 'Claude Sonnet 4.5', contextWindow: 262144, maxTokens: 32768 }],
+  models: [{ id: 'account-backed-test-model', name: 'Account-backed test model', contextWindow: 262144, maxTokens: 32768 }],
 }
 
 describe('llm-pi-ai writeProfile', () => {
+  it('removes a stale provider route when neither config nor the live gateway offers a model', async () => {
+    const settings = new FakeSettings()
+    settings.sections[LLM_PI_AI_NAMESPACE] = { providers: { [ROUTE]: PROFILE } }
+
+    await reconcileProfile(
+      settings,
+      resolveConfig({}, { DSH_HOME: '/tmp/dsh-test' }),
+      45101,
+      [],
+      new FakeLogger(),
+    )
+
+    expect(settings.sections[LLM_PI_AI_NAMESPACE]).toEqual({ providers: {} })
+  })
+
   it('uses the live gateway catalog as the complete provider model list', () => {
     const config = resolveConfig({}, { DSH_HOME: '/tmp/dsh-test' })
     expect(desiredProfile(config, 45101, [
@@ -33,16 +54,16 @@ describe('llm-pi-ai writeProfile', () => {
   it('retains live capability metadata instead of configured fallback values', () => {
     const config = resolveConfig({}, { DSH_HOME: '/tmp/dsh-test' })
     expect(desiredProfile(config, 45101, [{
-      id: 'claude-sonnet-4-5-20250929',
-      name: 'Live Sonnet',
+      id: 'account-backed-test-model',
+      name: 'Live account model',
       contextWindow: 200_000,
       maxTokens: 16_000,
       input: ['text', 'image'],
       reasoningEfforts: { off: null, low: 'low', high: 'high' },
       defaultReasoningLevel: 'high',
     }]).models).toEqual([{
-      id: 'claude-sonnet-4-5-20250929',
-      name: 'Live Sonnet',
+      id: 'account-backed-test-model',
+      name: 'Live account model',
       contextWindow: 200_000,
       maxTokens: 16_000,
       input: ['text', 'image'],

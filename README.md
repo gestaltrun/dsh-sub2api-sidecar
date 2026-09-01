@@ -121,7 +121,7 @@ Configuration (cordis.yml `config` on the plugin row; every field optional):
 | `adminEmail` / `adminPassword` | `admin@sub2api.local` / generated | AUTO_SETUP admin account; a generated password is kept in `run/admin-password` (`0600`) for later logins and never logged. |
 | `compliance.acceptOnBoot` | `true` | Acknowledge upstream's administrator compliance commitment on boot (echoing the exact phrase upstream issues, document URL logged). When `false`, a required acknowledgement fails the boot loudly naming the document. |
 | `group.name` / `group.description` | `dsh-composite` | The composite group the bootstrap ensures. |
-| `route.name` / `route.api` / `route.displayName` / `route.models` | `sub2api` / `openai-completions` / `Sub2API (sub2api)` / one Claude model | Provider identity plus the fallback catalog used only before live `/v1/models` discovery succeeds. |
+| `route.name` / `route.api` / `route.displayName` / `route.models` | `sub2api` / `openai-completions` / `Sub2API (sub2api)` / `[]` | Provider identity plus an optional operator-declared fallback catalog. The default registers no model until the group-bound `/v1/models` reports one. |
 | `redis.skip` / `redis.external` | `false` / – | Function-plugin defaults. The published bundle layer sets `skip: true` for the darwin placeholder; deployments can override it or point at external Redis. |
 | `credentials.adminRef` / `credentials.inferenceRef` | `SUB2API_ADMIN_API_KEY` / `SUB2API_API_KEY` | Credential references for the two keys. |
 | `proxy.enabled` | `true` | Mount the admin injection proxy prefix and the quota snapshot route. |
@@ -264,9 +264,10 @@ output limits, text/image input modalities, selectable reasoning levels, and
 per-model reasoning default into the `llm-pi-ai` profile; missing or unsupported
 facts stay omitted. Successful account, group, and Composite-route mutations
 request an immediate refresh; `modelCatalogPollMs` covers upstream cache
-invalidation and out-of-band changes. A failed or empty live response retains
-the last provider settings, and the configured route models remain a boot-only
-fallback.
+invalidation and out-of-band changes. A failed live response retains the last
+provider settings. An empty live catalog unregisters the provider unless
+`route.models` explicitly declares a fallback, so a new installation never
+invents a model the account pool cannot serve.
 
 ## Embedded console (browser half)
 

@@ -19,7 +19,7 @@ describe('config schema', () => {
     expect(resolved.credentials.inferenceRef).toBe('SUB2API_API_KEY')
     expect(resolved.route.name).toBe('sub2api')
     expect(resolved.route.api).toBe('openai-completions')
-    expect(resolved.route.models.length).toBeGreaterThan(0)
+    expect(resolved.route.models).toEqual([])
     expect(resolved.group.name).toBe('dsh-composite')
     expect(resolved.redis.skip).toBe(false)
     expect(resolved.adminPassword).toBeUndefined()
@@ -59,9 +59,9 @@ describe('config schema', () => {
     expect(catalogPoll.issues?.[0]?.path).toEqual(['modelCatalogPollMs'])
   })
 
-  it('rejects an empty model list and an unsupported wire protocol', () => {
+  it('admits an explicitly empty fallback model list and rejects an unsupported wire protocol', () => {
     const emptyModels = Config['~standard'].validate({ route: { models: [] } })
-    expect(emptyModels.issues?.[0]?.path[0]).toBe('route')
+    expect(emptyModels.issues).toBeUndefined()
     const badApi = Config['~standard'].validate({ route: { api: 'grpc' } })
     expect(badApi.issues?.[0]?.path).toEqual(['route', 'api'])
   })

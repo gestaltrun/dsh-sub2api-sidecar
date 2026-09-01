@@ -4,6 +4,37 @@ import { ProviderModelCatalogService } from '../src/model-catalog.ts'
 import { FakeCredentials, FakeLogger, FakeSettings } from './helpers/world.ts'
 
 describe('provider model catalog sync', () => {
+  it('unregisters a stale provider when the group-bound gateway serves no models', async () => {
+    const config = resolveConfig({ modelCatalogPollMs: 10_000 }, { DSH_HOME: '/tmp/dsh-test' })
+    const credentials = new FakeCredentials()
+    credentials.store.set(config.credentials.inferenceRef, 'sk-test')
+    const settings = new FakeSettings()
+    settings.sections['llm-pi-ai'] = {
+      providers: {
+        sub2api: {
+          api: 'openai-completions',
+          baseURL: 'http://127.0.0.1:45101/v1',
+          models: [{ id: 'not-account-backed' }],
+        },
+      },
+    }
+    const service = new ProviderModelCatalogService({
+      config,
+      credentials,
+      settings,
+      logger: new FakeLogger(),
+      sidecar: { port: 45101 },
+      fetchImpl: async () => new Response(JSON.stringify({ object: 'list', data: [] }), {
+        status: 200,
+        headers: { 'content-type': 'application/json' },
+      }),
+    })
+
+    await service.refresh()
+
+    expect(settings.sections['llm-pi-ai']).toEqual({ providers: {} })
+  })
+
   it('rewrites the provider when the live Sub2API model list changes', async () => {
     const config = resolveConfig({ modelCatalogPollMs: 10_000 }, { DSH_HOME: '/tmp/dsh-test' })
     const credentials = new FakeCredentials()

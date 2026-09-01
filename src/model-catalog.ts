@@ -1,7 +1,7 @@
 /** Keep the Gestalt provider catalog aligned with Sub2API's live gateway models. */
 
 import type { SidecarConfig } from './config.ts'
-import { desiredProfile, writeProfile } from './llm-profile.ts'
+import { reconcileProfile } from './llm-profile.ts'
 import type { CredentialsService, LoggerLike, SettingsService } from './seam.ts'
 import { Sub2apiClient } from './sub2api-client.ts'
 
@@ -75,13 +75,20 @@ export class ProviderModelCatalogService {
     })
     const models = await client.listGatewayModels(credential.value)
     if (models.length === 0) {
-      this.options.logger.warn('dsh-sub2api-sidecar: live gateway model catalog is empty; retaining the configured fallback')
+      await reconcileProfile(
+        this.options.settings,
+        this.options.config,
+        port,
+        [],
+        this.options.logger,
+      )
       return
     }
-    await writeProfile(
+    await reconcileProfile(
       this.options.settings,
-      this.options.config.route.name,
-      desiredProfile(this.options.config, port, models),
+      this.options.config,
+      port,
+      models,
       this.options.logger,
     )
   }

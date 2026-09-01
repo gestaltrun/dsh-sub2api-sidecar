@@ -103,7 +103,7 @@ sub2api 与 redis 进程树（SIGTERM → 宽限 → SIGKILL）。`data/`
 | `adminEmail` / `adminPassword` | `admin@sub2api.local` / 随机生成 | AUTO_SETUP 管理员账号；生成的密码保存在 `run/admin-password`（`0600`）供后续登录，绝不写日志。 |
 | `compliance.acceptOnBoot` | `true` | 启动时确认上游的管理员合规承诺（原样回传上游下发的确认短语，并记录文档 URL）。设为 `false` 时，未确认的合规门槛会让启动大声失败并指明文档。 |
 | `group.name` / `group.description` | `dsh-composite` | bootstrap 确保的 composite 组。 |
-| `route.name` / `route.api` / `route.displayName` / `route.models` | `sub2api` / `openai-completions` / `Sub2API (sub2api)` / 一个 Claude 模型 | Provider 标识以及仅在实时 `/v1/models` 发现成功前使用的回退目录。 |
+| `route.name` / `route.api` / `route.displayName` / `route.models` | `sub2api` / `openai-completions` / `Sub2API (sub2api)` / `[]` | Provider 标识以及可选的运维显式回退目录；默认在组绑定 `/v1/models` 报告真实模型前不注册任何模型。 |
 | `redis.skip` / `redis.external` | `false` / – | function 插件默认值；已发布 bundle 层针对 darwin 占位设置 `skip: true`，部署可覆盖或指向外部 Redis。 |
 | `credentials.adminRef` / `credentials.inferenceRef` | `SUB2API_ADMIN_API_KEY` / `SUB2API_API_KEY` | 两把 key 的凭据引用。 |
 | `proxy.enabled` | `true` | 是否挂载注入转发面前缀与额度快照路由。 |
@@ -219,8 +219,9 @@ Provider 模型目录以组绑定推理 key 的 `/v1/models` 为准。每个可�
 公布的上下文与输出上限、文字／图片输入模态、可选推理档位和逐模型推理默认值带入
 `llm-pi-ai` profile；缺失或不受支持的事实保持省略。账号、分组与 Composite 路由
 管理请求成功后会立即请求刷新；`modelCatalogPollMs` 负责覆盖上游缓存失效和
-旁路变更。实时请求失败或返回空目录时保留最近一次 Provider 设置，配置中的路由
-模型只作为启动回退。
+旁路变更。实时请求失败时保留最近一次 Provider 设置；实时目录为空且未显式配置
+`route.models` 时会注销 Provider，因此新安装不会虚构账号池无法提供的模型。显式
+配置的路由模型只作为运维回退。
 
 ## 嵌入控制台（浏览器半）
 

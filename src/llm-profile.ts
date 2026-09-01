@@ -57,6 +57,37 @@ export function desiredProfile(
 }
 
 /**
+ * Align the provider registration with the live or explicitly configured
+ * model catalog. An empty catalog removes the route instead of inventing a
+ * model that the current account pool cannot serve.
+ * @param settings - the host settings seam.
+ * @param config - resolved sidecar configuration.
+ * @param serverPort - current Sub2API gateway port.
+ * @param discoveredModels - exact models reported by the group-bound gateway.
+ * @param logger - host logger for registration diagnostics.
+ */
+export async function reconcileProfile(
+  settings: SettingsService,
+  config: SidecarConfig,
+  serverPort: number,
+  discoveredModels: ReadonlyArray<GatewayModel>,
+  logger: LoggerLike,
+): Promise<void> {
+  const profile = desiredProfile(config, serverPort, discoveredModels)
+  if (profile.models.length > 0) {
+    await writeProfile(settings, config.route.name, profile, logger)
+    return
+  }
+  const section = settings.get(LLM_PI_AI_NAMESPACE) as { providers?: Record<string, unknown> } | undefined
+  if (section?.providers?.[config.route.name] === undefined) {
+    logger.info('dsh-sub2api-sidecar: provider route "%s" has no account-backed models; keeping it unregistered', config.route.name)
+    return
+  }
+  await settings.mutate(LLM_PI_AI_NAMESPACE, [{ op: 'unset', path: ['providers', config.route.name] }])
+  logger.info('dsh-sub2api-sidecar: removed provider route "%s" because it has no account-backed models', config.route.name)
+}
+
+/**
  * Whether every leaf in `desired` deep-equals the same path in `stored`.
  * Extra keys in `stored` are ignored: the resolved settings section layers
  * schema defaults over the user patch, so the route may legitimately carry

@@ -60,6 +60,26 @@ export class FakeSettings implements SettingsService {
     this.sections[namespace] = merged
   }
 
+  async mutate(
+    namespace: string,
+    ops: readonly { readonly op: 'set' | 'unset'; readonly path: readonly string[]; readonly value?: unknown }[],
+  ): Promise<void> {
+    const current = structuredClone((this.sections[namespace] ?? {}) as Record<string, unknown>)
+    for (const op of ops) {
+      let owner = current
+      for (const segment of op.path.slice(0, -1)) {
+        const next = owner[segment]
+        if (typeof next !== 'object' || next === null || Array.isArray(next)) owner[segment] = {}
+        owner = owner[segment] as Record<string, unknown>
+      }
+      const leaf = op.path.at(-1)
+      if (leaf === undefined) continue
+      if (op.op === 'unset') delete owner[leaf]
+      else owner[leaf] = op.value
+    }
+    this.sections[namespace] = current
+  }
+
   get(namespace: string): unknown {
     return this.sections[namespace]
   }

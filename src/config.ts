@@ -11,7 +11,7 @@ import { childPath, defineSyncSchema, SchemaError, StandardSchema } from './stan
 import type { SchemaIssue } from './standard-schema.ts'
 import { parseAllowedOrigin } from './trust.ts'
 
-/** One configured fallback model on the composite route. */
+/** One explicitly configured fallback model on the composite route. */
 export interface RouteModel {
   /** Model id sent on the wire and shown to model selectors. */
   id: string
@@ -58,7 +58,7 @@ export interface RawSidecarConfig {
     api?: string
     /** Display name for configuration surfaces. */
     displayName?: string
-    /** Fallback model list used until the live Sub2API gateway reports models; at least one entry is required. */
+    /** Optional fallback model list used until the live Sub2API gateway reports models. */
     models?: RouteModel[]
   }
   /** Redis placement; the darwin pack ships a loud stub, so darwin needs `skip` plus an external Redis. */
@@ -114,7 +114,7 @@ export interface SidecarConfig {
   compliance: { acceptOnBoot: boolean }
   /** Composite group settings. */
   group: { name: string; description: string }
-  /** The provider route and its configured fallback model catalog. */
+  /** The provider route and its explicitly configured fallback model catalog. */
   route: {
     name: string
     api: string
@@ -210,9 +210,7 @@ const ROUTE_PATTERN = /^[a-z][a-z0-9-]*$/
 /** pi-ai wire protocols the configured provider route may name. */
 const ROUTE_APIS = new Set(['openai-completions', 'openai-responses', 'anthropic-messages'])
 
-const DEFAULT_ROUTE_MODELS: readonly RouteModel[] = [
-  { id: 'claude-sonnet-4-5-20250929', name: 'Claude Sonnet 4.5' },
-]
+const DEFAULT_ROUTE_MODELS: readonly RouteModel[] = []
 
 /** Validation context threaded through the recursive checks. */
 interface ValidateContext {
@@ -342,8 +340,8 @@ function validateRaw(ctx: ValidateContext, path: ReadonlyArray<PropertyKey>, val
     expectString(ctx, childPath(routePath, 'displayName'), route['displayName'])
     const models = route['models']
     if (models !== undefined) {
-      if (!Array.isArray(models) || models.length === 0) {
-        fail(ctx, childPath(routePath, 'models'), 'must be a non-empty array')
+      if (!Array.isArray(models)) {
+        fail(ctx, childPath(routePath, 'models'), 'must be an array')
       } else {
         for (const [index, model] of models.entries()) validateModel(ctx, childPath(childPath(routePath, 'models'), index), model)
       }

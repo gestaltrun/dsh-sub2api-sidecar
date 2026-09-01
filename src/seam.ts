@@ -141,6 +141,19 @@ export interface SettingsService {
    */
   update(namespace: string, patch: object): Promise<void>
   /**
+   * Apply path-addressed edits to a namespace's user layer.
+   * @param namespace - registered settings namespace.
+   * @param ops - ordered set/unset operations.
+   */
+  mutate(
+    namespace: string,
+    ops: readonly {
+      readonly op: 'set' | 'unset'
+      readonly path: readonly string[]
+      readonly value?: unknown
+    }[],
+  ): Promise<void>
+  /**
    * Read one registered namespace's resolved value (schema defaults, then the
    * registrant's composition `base`, then the user layer).
    * @param namespace - registered settings namespace.

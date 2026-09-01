@@ -12,7 +12,7 @@
 
 import { readStored, storeKey } from './credentials.ts'
 import type { SidecarCredentials } from './credentials.ts'
-import { writeProfile, desiredProfile } from './llm-profile.ts'
+import { reconcileProfile } from './llm-profile.ts'
 import type { DesiredProfile } from './llm-profile.ts'
 import { Sub2apiApiError, Sub2apiClient } from './sub2api-client.ts'
 import type { Auth, GroupSummary } from './sub2api-client.ts'
@@ -179,8 +179,8 @@ export async function ensureBootstrap(io: BootstrapIo): Promise<BootstrapResult>
   }
 
   // The group-bound gateway list is the exact catalog this provider can
-  // serve. A failed or empty discovery keeps the configured fallback so one
-  // transient listing failure cannot remove the provider during boot.
+  // serve. An explicit configured list is the only fallback when discovery
+  // succeeds with no models or fails.
   let discoveredModels: Array<{ id: string; name: string }> = []
   try {
     if (stored.inferenceKey !== undefined) {
@@ -205,10 +205,11 @@ export async function ensureBootstrap(io: BootstrapIo): Promise<BootstrapResult>
     )
   }
 
-  await writeProfile(
+  await reconcileProfile(
     io.settings,
-    config.route.name,
-    desiredProfile(config, io.serverPort, discoveredModels),
+    config,
+    io.serverPort,
+    discoveredModels,
     logger,
   )
 
