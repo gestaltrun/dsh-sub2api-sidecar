@@ -19,7 +19,6 @@ describe('config schema', () => {
     expect(resolved.credentials.inferenceRef).toBe('SUB2API_API_KEY')
     expect(resolved.route.name).toBe('sub2api')
     expect(resolved.route.api).toBe('openai-completions')
-    expect(resolved.route.models).toEqual([])
     expect(resolved.group.name).toBe('dsh-composite')
     expect(resolved.redis.skip).toBe(false)
     expect(resolved.adminPassword).toBeUndefined()
@@ -59,9 +58,9 @@ describe('config schema', () => {
     expect(catalogPoll.issues?.[0]?.path).toEqual(['modelCatalogPollMs'])
   })
 
-  it('admits an explicitly empty fallback model list and rejects an unsupported wire protocol', () => {
-    const emptyModels = Config['~standard'].validate({ route: { models: [] } })
-    expect(emptyModels.issues).toBeUndefined()
+  it('rejects configured model fallbacks and an unsupported wire protocol', () => {
+    const configuredModels = Config['~standard'].validate({ route: { models: [{ id: 'invented-model' }] } })
+    expect(configuredModels.issues?.[0]?.path).toEqual(['route', 'models'])
     const badApi = Config['~standard'].validate({ route: { api: 'grpc' } })
     expect(badApi.issues?.[0]?.path).toEqual(['route', 'api'])
   })
@@ -103,7 +102,7 @@ describe('resolveConfig', () => {
       adminEmail: 'ops@example.com',
       adminPassword: 'secret-password',
       group: { name: 'custom-group' },
-      route: { name: 'relay', api: 'anthropic-messages', displayName: 'Relay', models: [{ id: 'm1', contextWindow: 1000, maxTokens: 500 }] },
+      route: { name: 'relay', api: 'anthropic-messages', displayName: 'Relay' },
       redis: { skip: true, external: { host: 'redis.internal', port: 6380 } },
       credentials: { adminRef: 'X_ADMIN', inferenceRef: 'X_KEY' },
     }, {})
@@ -111,7 +110,7 @@ describe('resolveConfig', () => {
     expect(resolved.binaryDir).toBe('/packs/current')
     expect(resolved.adminPassword).toBe('secret-password')
     expect(resolved.group.name).toBe('custom-group')
-    expect(resolved.route.models[0]).toMatchObject({ id: 'm1', name: 'm1', contextWindow: 1000, maxTokens: 500 })
+    expect(resolved.route).toEqual({ name: 'relay', api: 'anthropic-messages', displayName: 'Relay' })
     expect(resolved.redis.external).toEqual({ host: 'redis.internal', port: 6380 })
     expect(resolved.credentials).toEqual({ adminRef: 'X_ADMIN', inferenceRef: 'X_KEY' })
   })

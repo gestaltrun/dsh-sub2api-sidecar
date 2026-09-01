@@ -32,8 +32,7 @@ export interface DesiredProfile {
 }
 
 /**
- * Build the desired profile from the live gateway catalog, or the configured
- * fallback before live discovery succeeds.
+ * Build the desired profile from the account-backed live gateway catalog.
  * @param config - the resolved plugin configuration.
  * @param serverPort - the sidecar server port allocated this boot.
  * @returns the profile payload for the route key.
@@ -43,22 +42,18 @@ export function desiredProfile(
   serverPort: number,
   discoveredModels: ReadonlyArray<GatewayModel> = [],
 ): DesiredProfile {
-  const configured = config.route.models.map((model) => ({ ...model }))
-  const models = discoveredModels.length === 0
-    ? configured
-    : discoveredModels.map((model) => ({ ...model }))
   return {
     apiKeyEnv: config.credentials.inferenceRef,
     displayName: config.route.displayName,
     api: config.route.api,
     baseURL: `http://127.0.0.1:${serverPort}/v1`,
-    models,
+    models: discoveredModels.map((model) => ({ ...model })),
   }
 }
 
 /**
- * Align the provider registration with the live or explicitly configured
- * model catalog. An empty catalog removes the route instead of inventing a
+ * Align the provider registration with the account-backed live model catalog.
+ * An empty catalog removes the route instead of inventing a
  * model that the current account pool cannot serve.
  * @param settings - the host settings seam.
  * @param config - resolved sidecar configuration.

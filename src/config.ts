@@ -11,18 +11,6 @@ import { childPath, defineSyncSchema, SchemaError, StandardSchema } from './stan
 import type { SchemaIssue } from './standard-schema.ts'
 import { parseAllowedOrigin } from './trust.ts'
 
-/** One explicitly configured fallback model on the composite route. */
-export interface RouteModel {
-  /** Model id sent on the wire and shown to model selectors. */
-  id: string
-  /** Human-readable name; defaults to the id. */
-  name?: string
-  /** Context capacity advertised to the harness (default 262144). */
-  contextWindow?: number
-  /** Output capability advertised to the harness (default 32768). */
-  maxTokens?: number
-}
-
 /** Raw, user-facing plugin configuration; every field optional. */
 export interface RawSidecarConfig {
   /** When false the plugin is inert: no directories, no processes, no settings writes. */
@@ -58,8 +46,6 @@ export interface RawSidecarConfig {
     api?: string
     /** Display name for configuration surfaces. */
     displayName?: string
-    /** Optional fallback model list used until the live Sub2API gateway reports models. */
-    models?: RouteModel[]
   }
   /** Redis placement; the darwin pack ships a loud stub, so darwin needs `skip` plus an external Redis. */
   redis?: {
@@ -114,12 +100,11 @@ export interface SidecarConfig {
   compliance: { acceptOnBoot: boolean }
   /** Composite group settings. */
   group: { name: string; description: string }
-  /** The provider route and its explicitly configured fallback model catalog. */
+  /** The provider route populated from account-backed discovery. */
   route: {
     name: string
     api: string
     displayName: string
-    models: Required<RouteModel>[]
   }
   /** Redis placement. */
   redis: {
@@ -170,12 +155,6 @@ export const DEFAULT_ROUTE_NAME = 'sub2api'
 /** Default wire protocol of the sub2api gateway's OpenAI-compatible surface. */
 export const DEFAULT_ROUTE_API = 'openai-completions'
 
-/** Context capacity advertised for models the route entry does not size. */
-export const DEFAULT_MODEL_CONTEXT_WINDOW = 262_144
-
-/** Output capability advertised for models the route entry does not size. */
-export const DEFAULT_MODEL_MAX_TOKENS = 32_768
-
 /** Default credential reference for the `admin-` management key. */
 export const DEFAULT_ADMIN_CREDENTIAL_REF = 'SUB2API_ADMIN_API_KEY'
 
@@ -209,8 +188,6 @@ const ROUTE_PATTERN = /^[a-z][a-z0-9-]*$/
 
 /** pi-ai wire protocols the configured provider route may name. */
 const ROUTE_APIS = new Set(['openai-completions', 'openai-responses', 'anthropic-messages'])
-
-const DEFAULT_ROUTE_MODELS: readonly RouteModel[] = []
 
 /** Validation context threaded through the recursive checks. */
 interface ValidateContext {
@@ -274,25 +251,6 @@ function expectPositiveInt(
   return value
 }
 
-/** Validate one route model entry. */
-function validateModel(ctx: ValidateContext, path: ReadonlyArray<PropertyKey>, value: unknown): RouteModel | null {
-  const raw = expectObject(ctx, path, value)
-  if (!raw) return null
-  const id = expectString(ctx, childPath(path, 'id'), raw['id'])
-  if (id === undefined) {
-    fail(ctx, childPath(path, 'id'), 'is required')
-    return null
-  }
-  const model: RouteModel = { id }
-  const name = expectString(ctx, childPath(path, 'name'), raw['name'])
-  if (name !== undefined) model.name = name
-  const contextWindow = expectPositiveInt(ctx, childPath(path, 'contextWindow'), raw['contextWindow'])
-  if (contextWindow !== undefined) model.contextWindow = contextWindow
-  const maxTokens = expectPositiveInt(ctx, childPath(path, 'maxTokens'), raw['maxTokens'])
-  if (maxTokens !== undefined) model.maxTokens = maxTokens
-  return model
-}
-
 /** Validate the whole raw config, collecting every issue instead of failing fast. */
 function validateRaw(ctx: ValidateContext, path: ReadonlyArray<PropertyKey>, value: unknown): RawSidecarConfig | null {
   const raw = expectObject(ctx, path, value)
@@ -338,14 +296,7 @@ function validateRaw(ctx: ValidateContext, path: ReadonlyArray<PropertyKey>, val
       fail(ctx, childPath(routePath, 'api'), `must be one of ${[...ROUTE_APIS].join(', ')}`)
     }
     expectString(ctx, childPath(routePath, 'displayName'), route['displayName'])
-    const models = route['models']
-    if (models !== undefined) {
-      if (!Array.isArray(models)) {
-        fail(ctx, childPath(routePath, 'models'), 'must be an array')
-      } else {
-        for (const [index, model] of models.entries()) validateModel(ctx, childPath(childPath(routePath, 'models'), index), model)
-      }
-    }
+    if (route['models'] !== undefined) fail(ctx, childPath(routePath, 'models'), 'is not supported; models come from account synchronization')
   }
 
   const redis = expectObject(ctx, childPath(path, 'redis'), raw['redis'])
@@ -415,12 +366,6 @@ export function resolveConfig(raw: RawSidecarConfig, env: NodeJS.ProcessEnv): Si
   if (portRange.min > portRange.max) {
     throw new Error(`dsh-sub2api-sidecar: portRange.min (${portRange.min}) must not exceed portRange.max (${portRange.max})`)
   }
-  const models: Required<RouteModel>[] = (raw.route?.models ?? DEFAULT_ROUTE_MODELS).map((model) => ({
-    id: model.id,
-    name: model.name ?? model.id,
-    contextWindow: model.contextWindow ?? DEFAULT_MODEL_CONTEXT_WINDOW,
-    maxTokens: model.maxTokens ?? DEFAULT_MODEL_MAX_TOKENS,
-  }))
   const routeName = raw.route?.name ?? DEFAULT_ROUTE_NAME
   return {
     enabled: raw.enabled ?? true,
@@ -443,7 +388,6 @@ export function resolveConfig(raw: RawSidecarConfig, env: NodeJS.ProcessEnv): Si
       name: routeName,
       api: raw.route?.api ?? DEFAULT_ROUTE_API,
       displayName: raw.route?.displayName ?? `Sub2API (${routeName})`,
-      models,
     },
     redis: {
       skip: raw.redis?.skip ?? false,

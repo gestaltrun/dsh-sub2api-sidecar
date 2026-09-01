@@ -89,8 +89,18 @@ describe('provider model catalog sync', () => {
         if (path === '/api/v1/admin/groups/all') {
           return Response.json({ code: 0, data: [{ id: 7, name: config.group.name, platform: 'composite' }] })
         }
-        if (path === '/api/v1/admin/accounts') return Response.json({ code: 0, data: { items: [] } })
-        return Response.json({ object: 'list', data: [] })
+        if (path === '/api/v1/admin/accounts') {
+          return Response.json({ code: 0, data: { items: [{
+            group_ids: [7],
+            extra: {
+              upstream_model_metadata: {
+                model_ids: [],
+                models: { 'removed-model': { id: 'removed-model' } },
+              },
+            },
+          }] } })
+        }
+        return Response.json({ object: 'list', data: [{ id: 'removed-model', object: 'model' }] })
       },
     })
 

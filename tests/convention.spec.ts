@@ -24,9 +24,7 @@ afterAll(async () => {
 
 describe('dual-key split convention', () => {
   it('keeps the sk- key out of the admin plane and the admin- key off the gateway', { timeout: 40_000 }, async () => {
-    const world = await createWorld({
-      configOverrides: { route: { models: [{ id: 'v12-probe' }] } },
-    })
+    const world = await createWorld()
     worlds.push(world)
     const ctx = world as unknown as PluginContext
     await apply(ctx, world.rawConfig)
@@ -35,17 +33,14 @@ describe('dual-key split convention', () => {
     const inferenceKey = world.credentials.store.get('SUB2API_API_KEY')
     expect(adminKey).toBeDefined()
     expect(inferenceKey).toBeDefined()
-    const baseURL = `http://127.0.0.1:${world.config.portRange.min}/v1`.replace(/\/v1$/, '')
-    // The gateway port is not derivable from the range start in general; read
-    // the registered profile's baseURL instead.
-    const profile = (world.settings.updates[0]?.patch['providers'] as Record<string, { baseURL: string }>)?.['sub2api']
-    expect(profile).toBeDefined()
-    const sidecarBase = new URL(profile?.baseURL ?? baseURL).origin
+    const healthy = world.logger.lines.find(line => line.includes('sub2api healthy at http://127.0.0.1:'))
+    const sidecarBase = healthy?.match(/http:\/\/127\.0\.0\.1:\d+/u)?.[0]
+    expect(sidecarBase).toBeDefined()
 
     // sk- key on the admin endpoint: the upstream middleware answers
     // INVALID_ADMIN_KEY with 401 — the bootstrap convention check asserts the
     // same thing after issuance.
-    const skOnAdmin = await fetch(`${sidecarBase}/api/v1/admin/settings/admin-api-key`, {
+    const skOnAdmin = await fetch(`${sidecarBase ?? ''}/api/v1/admin/settings/admin-api-key`, {
       headers: { 'x-api-key': inferenceKey ?? '' },
     })
     expect(skOnAdmin.status).toBe(401)
@@ -53,19 +48,19 @@ describe('dual-key split convention', () => {
     expect((skOnAdminBody as Record<string, unknown>)['code']).toBe('INVALID_ADMIN_KEY')
 
     // sk- key on the gateway: opens.
-    const skOnGateway = await fetch(`${sidecarBase}/v1/models`, {
+    const skOnGateway = await fetch(`${sidecarBase ?? ''}/v1/models`, {
       headers: { authorization: `Bearer ${inferenceKey}` },
     })
     expect(skOnGateway.status).toBe(200)
 
     // admin- key on the gateway: not a gateway key.
-    const adminOnGateway = await fetch(`${sidecarBase}/v1/models`, {
+    const adminOnGateway = await fetch(`${sidecarBase ?? ''}/v1/models`, {
       headers: { authorization: `Bearer ${adminKey}` },
     })
     expect(adminOnGateway.status).toBe(401)
 
     // admin- key on the admin plane: opens.
-    const adminOnAdmin = await fetch(`${sidecarBase}/api/v1/admin/settings/admin-api-key`, {
+    const adminOnAdmin = await fetch(`${sidecarBase ?? ''}/api/v1/admin/settings/admin-api-key`, {
       headers: { 'x-api-key': adminKey ?? '' },
     })
     expect(adminOnAdmin.status).toBe(200)
