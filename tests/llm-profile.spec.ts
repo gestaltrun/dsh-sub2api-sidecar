@@ -30,6 +30,27 @@ describe('llm-pi-ai writeProfile', () => {
     ])
   })
 
+  it('retains live capability metadata instead of configured fallback values', () => {
+    const config = resolveConfig({}, { DSH_HOME: '/tmp/dsh-test' })
+    expect(desiredProfile(config, 45101, [{
+      id: 'claude-sonnet-4-5-20250929',
+      name: 'Live Sonnet',
+      contextWindow: 200_000,
+      maxTokens: 16_000,
+      input: ['text', 'image'],
+      reasoningEfforts: { off: null, low: 'low', high: 'high' },
+      defaultReasoningLevel: 'high',
+    }]).models).toEqual([{
+      id: 'claude-sonnet-4-5-20250929',
+      name: 'Live Sonnet',
+      contextWindow: 200_000,
+      maxTokens: 16_000,
+      input: ['text', 'image'],
+      reasoningEfforts: { off: null, low: 'low', high: 'high' },
+      defaultReasoningLevel: 'high',
+    }])
+  })
+
   it('A: writes when the store lacks the route even though a write memo exists (regression)', async () => {
     const settings = new FakeSettings()
     // Simulates the stale memo scenario: supervisor-state.json claims the

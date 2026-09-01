@@ -259,7 +259,10 @@ this poll; the desktop embed uses it for the direct-console fallback link.
   appear in it, and no key material is ever included.
 
 The provider model catalog is authoritative from the group-bound inference
-key's `/v1/models`. Successful account, group, and Composite-route mutations
+key's `/v1/models`. Each usable live entry carries its advertised context and
+output limits, text/image input modalities, selectable reasoning levels, and
+per-model reasoning default into the `llm-pi-ai` profile; missing or unsupported
+facts stay omitted. Successful account, group, and Composite-route mutations
 request an immediate refresh; `modelCatalogPollMs` covers upstream cache
 invalidation and out-of-band changes. A failed or empty live response retains
 the last provider settings, and the configured route models remain a boot-only

@@ -28,6 +28,17 @@ export interface GroupSummary {
   readonly platform: string
 }
 
+/** One model and the capabilities advertised by its group-bound gateway route. */
+export interface GatewayModel {
+  readonly id: string
+  readonly name: string
+  readonly contextWindow?: number
+  readonly maxTokens?: number
+  readonly input?: ReadonlyArray<'text' | 'image'>
+  readonly reasoningEfforts?: false | Readonly<Partial<Record<'off' | 'minimal' | 'low' | 'medium' | 'high' | 'xhigh' | 'max', string | null>>>
+  readonly defaultReasoningLevel?: 'off' | 'minimal' | 'low' | 'medium' | 'high' | 'xhigh' | 'max'
+}
+
 /** Administrator compliance acknowledgement status. */
 export interface ComplianceStatus {
   /** Whether an acknowledgement is still owed. */
@@ -330,17 +341,18 @@ export class Sub2apiClient {
    * @param key - the group-bound inference key.
    * @returns unique model ids in gateway order.
    */
-  async listGatewayModels(key: string): Promise<Array<{ id: string; name: string }>> {
+  async listGatewayModels(key: string): Promise<GatewayModel[]> {
     const data = await this.request<unknown>('GET', '/v1/models',
       { kind: 'bearer', token: key }, undefined)
     if (!Array.isArray(data)) throw new Error('sub2api gateway model list carries no data array')
     const seen = new Set<string>()
     return data.flatMap((entry) => {
       if (typeof entry !== 'object' || entry === null) return []
-      const id = (entry as Record<string, unknown>)['id']
+      const record = entry as Record<string, unknown>
+      const id = record['id']
       if (typeof id !== 'string' || id.length === 0 || seen.has(id)) return []
       seen.add(id)
-      return [{ id, name: id }]
+      return [gatewayModel(record, id)]
     })
   }
 
@@ -360,6 +372,56 @@ export class Sub2apiClient {
       if (error instanceof Sub2apiApiError) return error.status
       throw error
     }
+  }
+}
+
+const REASONING_LEVELS = ['off', 'minimal', 'low', 'medium', 'high', 'xhigh', 'max'] as const
+type GatewayReasoningLevel = typeof REASONING_LEVELS[number]
+
+function positiveInteger(value: unknown): number | undefined {
+  return typeof value === 'number' && Number.isSafeInteger(value) && value > 0 ? value : undefined
+}
+
+function gatewayReasoningLevel(value: unknown): GatewayReasoningLevel | undefined {
+  const normalized = value === 'none' ? 'off' : value
+  return typeof normalized === 'string' && REASONING_LEVELS.some(level => level === normalized)
+    ? normalized as GatewayReasoningLevel
+    : undefined
+}
+
+function gatewayReasoning(record: Record<string, unknown>): Pick<GatewayModel, 'reasoningEfforts' | 'defaultReasoningLevel'> {
+  if (record['reasoning'] === false) return { reasoningEfforts: false }
+  if (record['reasoning'] !== true || !Array.isArray(record['supported_reasoning_levels'])) return {}
+  const efforts: Partial<Record<GatewayReasoningLevel, string | null>> = {}
+  for (const raw of record['supported_reasoning_levels']) {
+    const level = gatewayReasoningLevel(raw)
+    if (level === undefined || Object.hasOwn(efforts, level)) continue
+    efforts[level] = level === 'off' ? null : level
+  }
+  if (Object.keys(efforts).length === 0) return {}
+  const defaultReasoningLevel = gatewayReasoningLevel(record['default_reasoning_level'])
+  return {
+    reasoningEfforts: efforts,
+    ...(defaultReasoningLevel !== undefined && Object.hasOwn(efforts, defaultReasoningLevel)
+      ? { defaultReasoningLevel }
+      : {}),
+  }
+}
+
+function gatewayModel(record: Record<string, unknown>, id: string): GatewayModel {
+  const contextWindow = positiveInteger(record['context_window'])
+  const maxTokens = positiveInteger(record['max_output_tokens'])
+  const modalities = Array.isArray(record['input_modalities'])
+    ? [...new Set(record['input_modalities'].filter((value): value is 'text' | 'image' => value === 'text' || value === 'image'))]
+    : []
+  const displayName = record['display_name'] ?? record['name']
+  return {
+    id,
+    name: typeof displayName === 'string' && displayName.length > 0 ? displayName : id,
+    ...(contextWindow === undefined ? {} : { contextWindow }),
+    ...(maxTokens === undefined ? {} : { maxTokens }),
+    ...(modalities.length === 0 ? {} : { input: modalities }),
+    ...gatewayReasoning(record),
   }
 }
 

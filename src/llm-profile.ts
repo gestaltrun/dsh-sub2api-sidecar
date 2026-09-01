@@ -12,6 +12,7 @@
 import { deepEqualJson } from './json-equal.ts'
 import type { SidecarConfig } from './config.ts'
 import type { LoggerLike, SettingsService } from './seam.ts'
+import type { GatewayModel } from './sub2api-client.ts'
 
 /** The settings namespace llm-pi-ai owns. */
 export const LLM_PI_AI_NAMESPACE = 'llm-pi-ai'
@@ -27,7 +28,7 @@ export interface DesiredProfile {
   /** The sidecar's loopback `/v1` endpoint. */
   readonly baseURL: string
   /** The advertised model list. */
-  readonly models: ReadonlyArray<{ id: string; name: string; contextWindow?: number; maxTokens?: number }>
+  readonly models: ReadonlyArray<GatewayModel>
 }
 
 /**
@@ -40,13 +41,12 @@ export interface DesiredProfile {
 export function desiredProfile(
   config: SidecarConfig,
   serverPort: number,
-  discoveredModels: ReadonlyArray<{ id: string; name: string }> = [],
+  discoveredModels: ReadonlyArray<GatewayModel> = [],
 ): DesiredProfile {
   const configured = config.route.models.map((model) => ({ ...model }))
-  const configuredById = new Map(configured.map((model) => [model.id, model]))
   const models = discoveredModels.length === 0
     ? configured
-    : discoveredModels.map((model) => configuredById.get(model.id) ?? { id: model.id, name: model.name })
+    : discoveredModels.map((model) => ({ ...model }))
   return {
     apiKeyEnv: config.credentials.inferenceRef,
     displayName: config.route.displayName,
