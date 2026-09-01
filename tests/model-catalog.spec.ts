@@ -54,7 +54,7 @@ describe('provider model catalog sync', () => {
           context_window: 256_000,
           max_output_tokens: 32_768,
           reasoning: true,
-          default_reasoning_level: 'medium',
+          default_reasoning_level: 'ultra',
           supported_reasoning_levels: ['none', 'low', 'medium', 'high', 'ultra'],
           input_modalities: ['text', 'image'],
         }],
@@ -70,8 +70,8 @@ describe('provider model catalog sync', () => {
       contextWindow: 256_000,
       maxTokens: 32_768,
       input: ['text', 'image'],
-      reasoningEfforts: { off: null, low: 'low', medium: 'medium', high: 'high' },
-      defaultReasoningLevel: 'medium',
+      reasoningEfforts: { off: null, low: 'low', medium: 'medium', high: 'high', max: 'ultra' },
+      defaultReasoningLevel: 'max',
     }])
   })
 })

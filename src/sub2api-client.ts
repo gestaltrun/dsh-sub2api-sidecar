@@ -383,7 +383,7 @@ function positiveInteger(value: unknown): number | undefined {
 }
 
 function gatewayReasoningLevel(value: unknown): GatewayReasoningLevel | undefined {
-  const normalized = value === 'none' ? 'off' : value
+  const normalized = value === 'none' ? 'off' : value === 'ultra' ? 'max' : value
   return typeof normalized === 'string' && REASONING_LEVELS.some(level => level === normalized)
     ? normalized as GatewayReasoningLevel
     : undefined
@@ -396,7 +396,7 @@ function gatewayReasoning(record: Record<string, unknown>): Pick<GatewayModel, '
   for (const raw of record['supported_reasoning_levels']) {
     const level = gatewayReasoningLevel(raw)
     if (level === undefined || Object.hasOwn(efforts, level)) continue
-    efforts[level] = level === 'off' ? null : level
+    efforts[level] = level === 'off' ? null : typeof raw === 'string' ? raw : level
   }
   if (Object.keys(efforts).length === 0) return {}
   const defaultReasoningLevel = gatewayReasoningLevel(record['default_reasoning_level'])
