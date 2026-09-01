@@ -9,4 +9,10 @@ describe('installable bundle layer', () => {
 
     expect(patch).toMatch(/redis:\n\s+skip: true/u)
   })
+
+  it('does not inject a provider model before an account syncs it', async () => {
+    const patch = await fs.readFile(new URL('../cordis.patch.yml', import.meta.url), 'utf8')
+
+    expect(patch).not.toMatch(/\n\s+route:/u)
+  })
 })

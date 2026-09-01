@@ -11,9 +11,3 @@
         # binary lands; deployments with Redis can override this row.
         redis:
           skip: true
-        route:
-          models:
-            # Boot fallback only. The running provider replaces this list with
-            # the models served by the group-bound Sub2API gateway key.
-            - id: claude-sonnet-4-5-20250929
-              name: Claude Sonnet 4.5

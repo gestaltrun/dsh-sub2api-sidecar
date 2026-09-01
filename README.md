@@ -259,8 +259,9 @@ this poll; the desktop embed uses it for the direct-console fallback link.
   appear in it, and no key material is ever included.
 
 The provider model catalog is the group-bound inference key's `/v1/models`
-intersected with the successful upstream-sync metadata snapshots saved by
-accounts in that Composite group. Each usable entry carries its
+intersected with the complete model-id lists saved by successful upstream
+account synchronization in that Composite group. Capability metadata is
+optional and cannot shrink or expand that account-backed list. Each usable entry carries its
 gateway-advertised context and output
 limits, text/image input modalities, selectable reasoning levels, and
 per-model reasoning default into the `llm-pi-ai` profile; missing or unsupported

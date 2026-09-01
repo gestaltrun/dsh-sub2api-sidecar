@@ -35,6 +35,7 @@ describe('provider model catalog sync', () => {
                 },
                 extra: {
                   upstream_model_metadata: {
+                    model_ids: ['account-backed', 'metadata-missing'],
                     models: { 'account-backed': { id: 'account-backed' } },
                   },
                 },
@@ -46,6 +47,7 @@ describe('provider model catalog sync', () => {
           object: 'list',
           data: [
             { id: 'account-backed', object: 'model' },
+            { id: 'metadata-missing', object: 'model' },
             { id: 'not-account-backed', object: 'model' },
           ],
         })
@@ -55,7 +57,10 @@ describe('provider model catalog sync', () => {
     await service.refresh()
 
     const profile = settings.updates[0]?.patch['providers'] as Record<string, { models: unknown[] }>
-    expect(profile['sub2api']?.models).toEqual([{ id: 'account-backed', name: 'account-backed' }])
+    expect(profile['sub2api']?.models).toEqual([
+      { id: 'account-backed', name: 'account-backed' },
+      { id: 'metadata-missing', name: 'metadata-missing' },
+    ])
   })
 
   it('unregisters a stale provider when the group-bound gateway serves no models', async () => {

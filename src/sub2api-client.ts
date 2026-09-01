@@ -276,9 +276,9 @@ export class Sub2apiClient {
 
   /**
    * List the model ids recorded by successful upstream synchronization for
-   * accounts in one group. Accounts without a synchronized metadata snapshot
-   * contribute nothing, so configured platform defaults cannot masquerade as
-   * subscription capabilities.
+   * accounts in one group. The synchronized model-id list remains authoritative
+   * when capability metadata is incomplete; legacy snapshots fall back to their
+   * metadata keys. Configured platform defaults never contribute models.
    * @param auth - admin JWT or admin key.
    * @param groupId - group whose account mappings define the model set.
    * @returns unique model ids in account order.
@@ -302,7 +302,10 @@ export class Sub2apiClient {
         const extra = plainRecord(account['extra'])
         const snapshot = plainRecord(extra?.['upstream_model_metadata'])
         const snapshotModels = plainRecord(snapshot?.['models'])
-        for (const modelId of Object.keys(snapshotModels ?? {})) {
+        const snapshotModelIds = Array.isArray(snapshot?.['model_ids'])
+          ? snapshot['model_ids'].filter((modelId): modelId is string => typeof modelId === 'string')
+          : Object.keys(snapshotModels ?? {})
+        for (const modelId of snapshotModelIds) {
           if (modelId.length > 0) models.add(modelId)
         }
       }
