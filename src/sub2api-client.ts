@@ -275,9 +275,10 @@ export class Sub2apiClient {
   }
 
   /**
-   * List the public model ids explicitly saved by accounts in one group.
-   * Accounts without a model mapping contribute nothing, so discovery fails
-   * closed instead of expanding to a platform-wide catalog.
+   * List the model ids recorded by successful upstream synchronization for
+   * accounts in one group. Accounts without a synchronized metadata snapshot
+   * contribute nothing, so configured platform defaults cannot masquerade as
+   * subscription capabilities.
    * @param auth - admin JWT or admin key.
    * @param groupId - group whose account mappings define the model set.
    * @returns unique model ids in account order.
@@ -298,9 +299,10 @@ export class Sub2apiClient {
         if (typeof entry !== 'object' || entry === null) continue
         const account = entry as Record<string, unknown>
         if (!accountGroupIds(account).includes(groupId)) continue
-        const credentials = plainRecord(account['credentials'])
-        const mapping = plainRecord(credentials?.['model_mapping'])
-        for (const modelId of Object.keys(mapping ?? {})) {
+        const extra = plainRecord(account['extra'])
+        const snapshot = plainRecord(extra?.['upstream_model_metadata'])
+        const snapshotModels = plainRecord(snapshot?.['models'])
+        for (const modelId of Object.keys(snapshotModels ?? {})) {
           if (modelId.length > 0) models.add(modelId)
         }
       }

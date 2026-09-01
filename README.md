@@ -259,12 +259,14 @@ this poll; the desktop embed uses it for the direct-console fallback link.
   appear in it, and no key material is ever included.
 
 The provider model catalog is the group-bound inference key's `/v1/models`
-intersected with the `model_mapping` ids saved by accounts in that Composite
-group. Each usable entry carries its gateway-advertised context and output
+intersected with the successful upstream-sync metadata snapshots saved by
+accounts in that Composite group. Each usable entry carries its
+gateway-advertised context and output
 limits, text/image input modalities, selectable reasoning levels, and
 per-model reasoning default into the `llm-pi-ai` profile; missing or unsupported
-facts stay omitted. An account without a saved model mapping contributes no
-model, so a platform-wide gateway list cannot expand the provider silently.
+facts stay omitted. An account without a synchronized snapshot contributes no
+model, so configured model mappings and a platform-wide gateway list cannot
+expand the provider silently.
 Successful account, group, and Composite-route mutations request an immediate
 refresh; `modelCatalogPollMs` covers upstream cache invalidation and out-of-band
 changes. A failed live response retains the last provider settings. An empty

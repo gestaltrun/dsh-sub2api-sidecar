@@ -27,7 +27,17 @@ describe('provider model catalog sync', () => {
             data: {
               items: [{
                 group_ids: [7],
-                credentials: { model_mapping: { 'account-backed': 'account-backed' } },
+                credentials: {
+                  model_mapping: {
+                    'account-backed': 'account-backed',
+                    'not-account-backed': 'not-account-backed',
+                  },
+                },
+                extra: {
+                  upstream_model_metadata: {
+                    models: { 'account-backed': { id: 'account-backed' } },
+                  },
+                },
               }],
             },
           })
@@ -109,7 +119,11 @@ describe('provider model catalog sync', () => {
             data: {
               items: [{
                 group_ids: [7],
-                credentials: { model_mapping: Object.fromEntries(models.map(id => [id, id])) },
+                extra: {
+                  upstream_model_metadata: {
+                    models: Object.fromEntries(models.map(id => [id, { id }])),
+                  },
+                },
               }],
             },
           })
@@ -153,7 +167,11 @@ describe('provider model catalog sync', () => {
             data: {
               items: [{
                 group_ids: [7],
-                credentials: { model_mapping: { 'vision-coder': 'vision-coder' } },
+                extra: {
+                  upstream_model_metadata: {
+                    models: { 'vision-coder': { id: 'vision-coder' } },
+                  },
+                },
               }],
             },
           })
