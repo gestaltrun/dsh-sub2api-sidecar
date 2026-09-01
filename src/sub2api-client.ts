@@ -275,6 +275,42 @@ export class Sub2apiClient {
   }
 
   /**
+   * List the public model ids explicitly saved by accounts in one group.
+   * Accounts without a model mapping contribute nothing, so discovery fails
+   * closed instead of expanding to a platform-wide catalog.
+   * @param auth - admin JWT or admin key.
+   * @param groupId - group whose account mappings define the model set.
+   * @returns unique model ids in account order.
+   */
+  async listGroupAccountModels(auth: Auth, groupId: number): Promise<string[]> {
+    const pageSize = 100
+    const models = new Set<string>()
+    for (let page = 1; ; page += 1) {
+      const data = await this.request<unknown>(
+        'GET',
+        `/api/v1/admin/accounts?page=${String(page)}&page_size=${String(pageSize)}`,
+        auth,
+        undefined,
+      )
+      const payload = typeof data === 'object' && data !== null ? data as Record<string, unknown> : {}
+      const items = Array.isArray(payload['items']) ? payload['items'] : []
+      for (const entry of items) {
+        if (typeof entry !== 'object' || entry === null) continue
+        const account = entry as Record<string, unknown>
+        if (!accountGroupIds(account).includes(groupId)) continue
+        const credentials = plainRecord(account['credentials'])
+        const mapping = plainRecord(credentials?.['model_mapping'])
+        for (const modelId of Object.keys(mapping ?? {})) {
+          if (modelId.length > 0) models.add(modelId)
+        }
+      }
+      const total = positiveInteger(payload['total'])
+      if (items.length < pageSize || (total !== undefined && page * pageSize >= total)) break
+    }
+    return [...models]
+  }
+
+  /**
    * Create a group.
    * @param auth - admin JWT or admin key.
    * @param input - name, description, platform, and rate multiplier.
@@ -380,6 +416,22 @@ type GatewayReasoningLevel = typeof REASONING_LEVELS[number]
 
 function positiveInteger(value: unknown): number | undefined {
   return typeof value === 'number' && Number.isSafeInteger(value) && value > 0 ? value : undefined
+}
+
+function plainRecord(value: unknown): Record<string, unknown> | undefined {
+  return typeof value === 'object' && value !== null && !Array.isArray(value)
+    ? value as Record<string, unknown>
+    : undefined
+}
+
+function accountGroupIds(account: Record<string, unknown>): number[] {
+  const direct = Array.isArray(account['group_ids']) ? account['group_ids'] : []
+  const nested = Array.isArray(account['groups'])
+    ? account['groups'].map(group => plainRecord(group)?.['id'])
+    : []
+  return [...direct, ...nested]
+    .map(value => typeof value === 'number' ? value : Number(value))
+    .filter(id => Number.isInteger(id))
 }
 
 function gatewayReasoningLevel(value: unknown): GatewayReasoningLevel | undefined {

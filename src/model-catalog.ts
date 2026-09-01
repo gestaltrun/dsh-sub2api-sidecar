@@ -67,13 +67,20 @@ export class ProviderModelCatalogService {
     const port = this.options.sidecar.port
     if (port === undefined) return
     const credential = await this.options.credentials.resolve(this.options.config.credentials.inferenceRef)
-    if (credential === undefined) return
+    const adminCredential = await this.options.credentials.resolve(this.options.config.credentials.adminRef)
+    if (credential === undefined || adminCredential === undefined) return
     const client = new Sub2apiClient({
       baseUrl: `http://127.0.0.1:${String(port)}`,
       timeoutMs: this.options.config.proxy.timeoutMs,
       ...(this.options.fetchImpl === undefined ? {} : { fetchImpl: this.options.fetchImpl }),
     })
-    const models = await client.listGatewayModels(credential.value)
+    const groups = await client.listGroups({ kind: 'adminKey', key: adminCredential.value }, 'composite')
+    const group = groups.find(candidate => candidate.name === this.options.config.group.name)
+    const accountModels = group === undefined
+      ? []
+      : await client.listGroupAccountModels({ kind: 'adminKey', key: adminCredential.value }, group.id)
+    const allowed = new Set(accountModels)
+    const models = (await client.listGatewayModels(credential.value)).filter(model => allowed.has(model.id))
     if (models.length === 0) {
       await reconcileProfile(
         this.options.settings,

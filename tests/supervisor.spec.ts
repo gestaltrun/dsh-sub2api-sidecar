@@ -1,6 +1,6 @@
 /**
  * Supervisor lifecycle: happy-path boot with credential issuance and the
- * llm-pi-ai registration, health failure refusal, dispose semantics (data
+ * account-backed llm-pi-ai registration, health failure refusal, dispose semantics (data
  * preserved, processes exited), and reload idempotency (keys reused, no
  * duplicate processes, no re-initdb).
  */
@@ -38,7 +38,7 @@ async function bootLines(stateDir: string, name: string): Promise<string[]> {
 }
 
 describe('supervisor happy path', () => {
-  it('boots the chain, issues both keys, and registers the llm-pi-ai route', { timeout: 40_000 }, async () => {
+  it('boots the chain, issues both keys, and leaves an empty account pool unregistered', { timeout: 40_000 }, async () => {
     const { world, ctx } = useWorld(await createWorld())
     await apply(ctx, world.rawConfig)
 
@@ -48,23 +48,7 @@ describe('supervisor happy path', () => {
     expect(adminKey).toMatch(/^admin-[0-9a-f]{64}$/)
     expect(inferenceKey).toMatch(/^sk-[0-9a-f]{64}$/)
 
-    // Exactly one llm-pi-ai settings write carrying the hand-declared route.
-    expect(world.settings.updates).toHaveLength(1)
-    const update = world.settings.updates[0]
-    expect(update?.namespace).toBe('llm-pi-ai')
-    const providers = update?.patch['providers'] as Record<string, Record<string, unknown>>
-    const profile = providers?.['sub2api']
-    expect(profile?.['apiKeyEnv']).toBe('SUB2API_API_KEY')
-    expect(profile?.['baseURL']).toMatch(/^http:\/\/127\.0\.0\.1:\d+\/v1$/)
-    expect(Array.isArray(profile?.['models'])).toBe(true)
-    // The provider catalog follows the models served by the group-bound gateway key.
-    expect(profile?.['models']).toContainEqual(expect.objectContaining({ id: 'v12-probe' }))
-
-    // The baseURL names the port the fake actually listens on: a request to it
-    // through the issued sk- key succeeds.
-    const baseURL = profile?.['baseURL'] as string
-    const gateway = await fetch(`${baseURL}/models`, { headers: { authorization: `Bearer ${inferenceKey}` } })
-    expect(gateway.status).toBe(200)
+    expect(world.settings.updates).toHaveLength(0)
 
     // Exactly one process set: one sub2api boot, one redis boot, one postgres boot, one initdb.
     expect(await bootLines(world.stateDir, 'sub2api-boots.log')).toHaveLength(1)

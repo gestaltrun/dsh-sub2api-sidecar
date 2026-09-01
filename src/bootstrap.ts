@@ -184,7 +184,14 @@ export async function ensureBootstrap(io: BootstrapIo): Promise<BootstrapResult>
   let discoveredModels: Array<{ id: string; name: string }> = []
   try {
     if (stored.inferenceKey !== undefined) {
-      discoveredModels = await client.listGatewayModels(stored.inferenceKey)
+      const adminAuth = { kind: 'adminKey' as const, key: stored.adminKey }
+      const modelGroupId = groupId ?? (await client.listGroups(adminAuth, 'composite'))
+        .find(group => group.name === config.group.name)?.id
+      const accountModels = modelGroupId === undefined
+        ? new Set<string>()
+        : new Set(await client.listGroupAccountModels(adminAuth, modelGroupId))
+      discoveredModels = (await client.listGatewayModels(stored.inferenceKey))
+        .filter(model => accountModels.has(model.id))
       if (discoveredModels.length > 0) {
         logger.info('dsh-sub2api-sidecar: discovered %d model(s) from the live gateway', String(discoveredModels.length))
       }

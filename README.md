@@ -258,16 +258,19 @@ this poll; the desktop embed uses it for the direct-console fallback link.
 - The snapshot is a field whitelist: credential-shaped upstream fields cannot
   appear in it, and no key material is ever included.
 
-The provider model catalog is authoritative from the group-bound inference
-key's `/v1/models`. Each usable live entry carries its advertised context and
-output limits, text/image input modalities, selectable reasoning levels, and
+The provider model catalog is the group-bound inference key's `/v1/models`
+intersected with the `model_mapping` ids saved by accounts in that Composite
+group. Each usable entry carries its gateway-advertised context and output
+limits, text/image input modalities, selectable reasoning levels, and
 per-model reasoning default into the `llm-pi-ai` profile; missing or unsupported
-facts stay omitted. Successful account, group, and Composite-route mutations
-request an immediate refresh; `modelCatalogPollMs` covers upstream cache
-invalidation and out-of-band changes. A failed live response retains the last
-provider settings. An empty live catalog unregisters the provider unless
-`route.models` explicitly declares a fallback, so a new installation never
-invents a model the account pool cannot serve.
+facts stay omitted. An account without a saved model mapping contributes no
+model, so a platform-wide gateway list cannot expand the provider silently.
+Successful account, group, and Composite-route mutations request an immediate
+refresh; `modelCatalogPollMs` covers upstream cache invalidation and out-of-band
+changes. A failed live response retains the last provider settings. An empty
+intersection unregisters the provider unless `route.models` explicitly
+declares a fallback, so a new installation never invents a model the account
+pool cannot serve.
 
 ## Embedded console (browser half)
 

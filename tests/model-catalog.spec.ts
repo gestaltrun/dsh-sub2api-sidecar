@@ -4,10 +4,55 @@ import { ProviderModelCatalogService } from '../src/model-catalog.ts'
 import { FakeCredentials, FakeLogger, FakeSettings } from './helpers/world.ts'
 
 describe('provider model catalog sync', () => {
+  it('publishes only gateway models declared by accounts in the composite group', async () => {
+    const config = resolveConfig({ modelCatalogPollMs: 10_000 }, { DSH_HOME: '/tmp/dsh-test' })
+    const credentials = new FakeCredentials()
+    credentials.store.set(config.credentials.inferenceRef, 'sk-test')
+    credentials.store.set(config.credentials.adminRef, 'admin-test')
+    const settings = new FakeSettings()
+    const service = new ProviderModelCatalogService({
+      config,
+      credentials,
+      settings,
+      logger: new FakeLogger(),
+      sidecar: { port: 45101 },
+      fetchImpl: async (input) => {
+        const path = new URL(String(input)).pathname
+        if (path === '/api/v1/admin/groups/all') {
+          return Response.json({ code: 0, data: [{ id: 7, name: config.group.name, platform: 'composite' }] })
+        }
+        if (path === '/api/v1/admin/accounts') {
+          return Response.json({
+            code: 0,
+            data: {
+              items: [{
+                group_ids: [7],
+                credentials: { model_mapping: { 'account-backed': 'account-backed' } },
+              }],
+            },
+          })
+        }
+        return Response.json({
+          object: 'list',
+          data: [
+            { id: 'account-backed', object: 'model' },
+            { id: 'not-account-backed', object: 'model' },
+          ],
+        })
+      },
+    })
+
+    await service.refresh()
+
+    const profile = settings.updates[0]?.patch['providers'] as Record<string, { models: unknown[] }>
+    expect(profile['sub2api']?.models).toEqual([{ id: 'account-backed', name: 'account-backed' }])
+  })
+
   it('unregisters a stale provider when the group-bound gateway serves no models', async () => {
     const config = resolveConfig({ modelCatalogPollMs: 10_000 }, { DSH_HOME: '/tmp/dsh-test' })
     const credentials = new FakeCredentials()
     credentials.store.set(config.credentials.inferenceRef, 'sk-test')
+    credentials.store.set(config.credentials.adminRef, 'admin-test')
     const settings = new FakeSettings()
     settings.sections['llm-pi-ai'] = {
       providers: {
@@ -24,10 +69,14 @@ describe('provider model catalog sync', () => {
       settings,
       logger: new FakeLogger(),
       sidecar: { port: 45101 },
-      fetchImpl: async () => new Response(JSON.stringify({ object: 'list', data: [] }), {
-        status: 200,
-        headers: { 'content-type': 'application/json' },
-      }),
+      fetchImpl: async (input) => {
+        const path = new URL(String(input)).pathname
+        if (path === '/api/v1/admin/groups/all') {
+          return Response.json({ code: 0, data: [{ id: 7, name: config.group.name, platform: 'composite' }] })
+        }
+        if (path === '/api/v1/admin/accounts') return Response.json({ code: 0, data: { items: [] } })
+        return Response.json({ object: 'list', data: [] })
+      },
     })
 
     await service.refresh()
@@ -39,6 +88,7 @@ describe('provider model catalog sync', () => {
     const config = resolveConfig({ modelCatalogPollMs: 10_000 }, { DSH_HOME: '/tmp/dsh-test' })
     const credentials = new FakeCredentials()
     credentials.store.set(config.credentials.inferenceRef, 'sk-test')
+    credentials.store.set(config.credentials.adminRef, 'admin-test')
     const settings = new FakeSettings()
     const logger = new FakeLogger()
     let models = ['glm-4.5']
@@ -48,10 +98,24 @@ describe('provider model catalog sync', () => {
       settings,
       logger,
       sidecar: { port: 45101 },
-      fetchImpl: async () => new Response(JSON.stringify({
-        object: 'list',
-        data: models.map(id => ({ id, object: 'model' })),
-      }), { status: 200, headers: { 'content-type': 'application/json' } }),
+      fetchImpl: async (input) => {
+        const path = new URL(String(input)).pathname
+        if (path === '/api/v1/admin/groups/all') {
+          return Response.json({ code: 0, data: [{ id: 7, name: config.group.name, platform: 'composite' }] })
+        }
+        if (path === '/api/v1/admin/accounts') {
+          return Response.json({
+            code: 0,
+            data: {
+              items: [{
+                group_ids: [7],
+                credentials: { model_mapping: Object.fromEntries(models.map(id => [id, id])) },
+              }],
+            },
+          })
+        }
+        return Response.json({ object: 'list', data: models.map(id => ({ id, object: 'model' })) })
+      },
     })
 
     await service.refresh()
@@ -70,6 +134,7 @@ describe('provider model catalog sync', () => {
     const config = resolveConfig({ modelCatalogPollMs: 10_000 }, { DSH_HOME: '/tmp/dsh-test' })
     const credentials = new FakeCredentials()
     credentials.store.set(config.credentials.inferenceRef, 'sk-test')
+    credentials.store.set(config.credentials.adminRef, 'admin-test')
     const settings = new FakeSettings()
     const service = new ProviderModelCatalogService({
       config,
@@ -77,9 +142,23 @@ describe('provider model catalog sync', () => {
       settings,
       logger: new FakeLogger(),
       sidecar: { port: 45101 },
-      fetchImpl: async () => new Response(JSON.stringify({
-        object: 'list',
-        data: [{
+      fetchImpl: async (input) => {
+        const path = new URL(String(input)).pathname
+        if (path === '/api/v1/admin/groups/all') {
+          return Response.json({ code: 0, data: [{ id: 7, name: config.group.name, platform: 'composite' }] })
+        }
+        if (path === '/api/v1/admin/accounts') {
+          return Response.json({
+            code: 0,
+            data: {
+              items: [{
+                group_ids: [7],
+                credentials: { model_mapping: { 'vision-coder': 'vision-coder' } },
+              }],
+            },
+          })
+        }
+        return Response.json({ object: 'list', data: [{
           id: 'vision-coder',
           display_name: 'Vision Coder',
           context_window: 256_000,
@@ -88,8 +167,8 @@ describe('provider model catalog sync', () => {
           default_reasoning_level: 'ultra',
           supported_reasoning_levels: ['none', 'low', 'medium', 'high', 'ultra'],
           input_modalities: ['text', 'image'],
-        }],
-      }), { status: 200, headers: { 'content-type': 'application/json' } }),
+        }] })
+      },
     })
 
     await service.refresh()

@@ -24,7 +24,9 @@ afterAll(async () => {
 
 describe('dual-key split convention', () => {
   it('keeps the sk- key out of the admin plane and the admin- key off the gateway', { timeout: 40_000 }, async () => {
-    const world = await createWorld()
+    const world = await createWorld({
+      configOverrides: { route: { models: [{ id: 'v12-probe' }] } },
+    })
     worlds.push(world)
     const ctx = world as unknown as PluginContext
     await apply(ctx, world.rawConfig)
