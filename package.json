@@ -1,6 +1,6 @@
 {
   "name": "dsh-sub2api-sidecar",
-  "version": "0.1.24",
+  "version": "0.1.25",
   "description": "DeepSeek Harness bundle that supervises a local Sub2API sidecar, bootstraps its admin-/sk- credential pair, and embeds the sidecar's own admin console",
   "type": "module",
   "license": "SEE LICENSE IN LICENSE",
